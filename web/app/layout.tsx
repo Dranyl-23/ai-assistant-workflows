@@ -3,7 +3,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Assistant Workflow",
+  title: "LuminaAI",
   description: "Your intelligent AI productivity assistant with voice, search, and workflow automation",
 };
 

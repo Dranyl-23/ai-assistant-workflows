@@ -310,7 +310,7 @@ export default function IntegrationsPage() {
               <h1 style={{ fontSize: "32px", fontWeight: "800", letterSpacing: "-0.02em" }}>App Integrations</h1>
             </div>
             <p style={{ color: "var(--text-muted)", marginLeft: "52px", fontSize: "15px" }}>
-              Bridge your favorite tools with Antigravity AI for seamless automation.
+              Bridge your favorite tools with LuminaAI for seamless automation.
             </p>
           </div>
 

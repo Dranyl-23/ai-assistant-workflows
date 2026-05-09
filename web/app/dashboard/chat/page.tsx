@@ -674,7 +674,7 @@ export default function ChatPage() {
               <Bot size={22} color="white" />
             </div>
             <div>
-              <h2 style={{ fontSize: "17px", fontWeight: "800", letterSpacing: "0.02em", color: "white" }}>Antigravity Engine</h2>
+              <h2 style={{ fontSize: "17px", fontWeight: "800", letterSpacing: "0.02em", color: "white" }}>LuminaAI Engine</h2>
               <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--primary-violet)", fontWeight: "600", marginTop: "2px" }}>
                 <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10B981", boxShadow: "0 0 10px #10B981" }} />
                 {currentConversationId ? "Active Orchestration" : "Ready for Commands"}
@@ -980,7 +980,7 @@ export default function ChatPage() {
                 {isRecording ? <MicOff size={22} /> : <Mic size={22} />}
               </button>
 
-              <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={isRecording ? "Maminaw ko..." : "Message Antigravity or type a command..."} style={{ flex: 1, background: "transparent", border: "none", color: "white", padding: "12px 6px", outline: "none", fontSize: "15px", fontWeight: "400" }} />
+              <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={isRecording ? "Maminaw ko..." : "Message LuminaAI or type a command..."} style={{ flex: 1, background: "transparent", border: "none", color: "white", padding: "12px 6px", outline: "none", fontSize: "15px", fontWeight: "400" }} />
               
               <button type="submit" disabled={(!input.trim() && !attachedImage && attachedFiles.length === 0) || isLoading} style={{ width: "48px", height: "48px", borderRadius: "16px", background: "var(--gradient-primary)", border: "none", color: "white", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)", boxShadow: ((!input.trim() && !attachedImage && attachedFiles.length === 0) || isLoading) ? "none" : "0 8px 20px rgba(139, 92, 246, 0.4)", opacity: ((!input.trim() && !attachedImage && attachedFiles.length === 0) || isLoading) ? 0.5 : 1, transform: ((!input.trim() && !attachedImage && attachedFiles.length === 0) || isLoading) ? "scale(0.95)" : "scale(1)" }}>
                 {isLoading ? <Loader2 size={22} className="animate-spin" /> : <Send size={20} style={{ marginLeft: "2px" }} />}

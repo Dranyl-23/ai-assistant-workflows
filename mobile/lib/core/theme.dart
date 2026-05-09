@@ -29,7 +29,7 @@ class AppTheme {
           bodyMedium: TextStyle(color: textMuted, fontSize: 14),
         ),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         color: cardBackground.withOpacity(0.5),
         elevation: 0,
         shape: RoundedRectangleBorder(

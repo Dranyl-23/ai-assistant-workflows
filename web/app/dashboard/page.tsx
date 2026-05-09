@@ -83,7 +83,7 @@ export default function DashboardPage() {
   const quickActions = [
     { 
       title: "New Chat Session", 
-      desc: "Start a conversation with Antigravity AI.", 
+      desc: "Start a conversation with LuminaAI.", 
       icon: <Plus size={20} />, 
       href: "/dashboard/chat", 
       color: "var(--primary-violet)" 

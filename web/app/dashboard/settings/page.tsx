@@ -406,7 +406,7 @@ export default function SettingsPage() {
                     </label>
                   </div>
                   <div>
-                    <h3 style={{ fontSize: "22px", fontWeight: "700", marginBottom: "4px" }}>{user?.user_metadata?.full_name || "Antigravity User"}</h3>
+                    <h3 style={{ fontSize: "22px", fontWeight: "700", marginBottom: "4px" }}>{user?.user_metadata?.full_name || "LuminaAI User"}</h3>
                     <p style={{ color: "var(--text-muted)", fontSize: "14px", marginBottom: "12px" }}>{user?.email}</p>
                     <div style={{ display: "flex", gap: "8px" }}>
                       <div style={{ 
@@ -501,7 +501,7 @@ export default function SettingsPage() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "32px" }}>
                   <div>
                     <h2 style={{ fontSize: "22px", fontWeight: "700", marginBottom: "4px" }}>AI Memory Bank</h2>
-                    <p style={{ color: "var(--text-muted)", fontSize: "14px" }}>Insights and facts Antigravity has learned about you.</p>
+                    <p style={{ color: "var(--text-muted)", fontSize: "14px" }}>Insights and facts LuminaAI has learned about you.</p>
                   </div>
                   <div style={{ padding: "8px 16px", borderRadius: "12px", background: "rgba(139, 92, 246, 0.1)", color: "var(--primary-violet)", fontSize: "13px", fontWeight: "700" }}>
                     {memories.length} Stored Facts
