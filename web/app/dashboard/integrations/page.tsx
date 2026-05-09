@@ -73,6 +73,8 @@ export default function IntegrationsPage() {
     configData: Record<string, string>;
   }>({ isOpen: false, provider: null, configData: {} });
 
+  const [connecting, setConnecting] = useState(false);
+
   const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000/api";
 
   const fetchIntegrations = async () => {
@@ -112,6 +114,7 @@ export default function IntegrationsPage() {
     if (!session?.access_token || !configModal.provider) return;
 
     try {
+      setConnecting(true);
       const response = await fetch(`${BACKEND_URL}/integrations/${configModal.provider.id}`, {
         method: "POST",
         headers: {
@@ -127,11 +130,18 @@ export default function IntegrationsPage() {
       });
 
       if (response.ok) {
+        alert(`${configModal.provider.name} connected successfully!`);
         setConfigModal({ isOpen: false, provider: null, configData: {} });
         await fetchIntegrations();
+      } else {
+        const errorData = await response.json();
+        alert(`Error: ${errorData.error || "Failed to connect"}`);
       }
     } catch (err) {
       console.error("Connection error:", err);
+      alert("Connection failed. Please check your internet or server status.");
+    } finally {
+      setConnecting(false);
     }
   };
 
@@ -283,7 +293,9 @@ export default function IntegrationsPage() {
 
               <div style={{ display: "flex", gap: "12px", marginTop: "12px" }}>
                 <button type="button" onClick={() => setConfigModal({ isOpen: false, provider: null, configData: {} })} className="btn-secondary" style={{ flex: 1, padding: "12px" }}>Cancel</button>
-                <button type="submit" className="btn-primary" style={{ flex: 1, padding: "12px", justifyContent: "center" }}>Connect App</button>
+                <button type="submit" disabled={connecting} className="btn-primary" style={{ flex: 1, padding: "12px", justifyContent: "center", opacity: connecting ? 0.7 : 1 }}>
+                  {connecting ? <Loader2 size={18} className="animate-spin" /> : "Connect App"}
+                </button>
               </div>
             </form>
           </div>
