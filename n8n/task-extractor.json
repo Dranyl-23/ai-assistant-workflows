@@ -1,0 +1,120 @@
+{
+  "name": "task-extractor",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "task-extractor",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-node",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        180,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY_HERE"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'llama-3.1-8b-instant', messages: [ { role: 'system', content: 'You are an AI task extractor. Extract all actionable tasks from the text. Return ONLY a valid JSON array of objects, where each object has \\'title\\' and \\'description\\'.' }, { role: 'user', content: $json.body.text } ], temperature: 0.1, response_format: { type: 'json_object' } }) }}",
+        "options": {}
+      },
+      "id": "groq-api-node",
+      "name": "Call Groq API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        400,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "let content = $input.first().json.choices[0].message.content;\ntry {\n  let parsed = JSON.parse(content);\n  // Handle cases where AI returns { \"tasks\": [...] } or just [...]\n  let tasks = Array.isArray(parsed) ? parsed : (parsed.tasks || []);\n  return { json: { success: true, tasks: tasks } };\n} catch (e) {\n  return { json: { success: false, error: \"Failed to parse tasks\" } };\n}"
+      },
+      "id": "parse-tasks-node",
+      "name": "Parse Tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "respond-success-node",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        840,
+        240
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Call Groq API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Groq API": {
+      "main": [
+        [
+          {
+            "node": "Parse Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Tasks": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "v1"
+}

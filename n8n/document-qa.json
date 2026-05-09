@@ -1,0 +1,120 @@
+{
+    "name": "document-qa",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "document-qa",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "id": "webhook-node",
+            "name": "Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                200,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.groq.com/openai/v1/chat/completions",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer your-groq-api-key"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ model: 'llama-3.1-8b-instant', messages: [ { role: 'system', content: 'You are a Document QA assistant. Answer the user\\'s question based strictly on the provided document text. Do not make up information. If the answer is not in the text, reply with \"I cannot find the answer in the provided document.\"' }, { role: 'user', content: 'DOCUMENT TEXT:\\n' + ($json.body.documentText || '') + '\\n\\nQUESTION:\\n' + ($json.body.question || '') } ], temperature: 0.1 }) }}",
+                "options": {}
+            },
+            "id": "groq-qa-node",
+            "name": "Document QA (Groq AI)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                420,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "try {\n  let aiResponse = $input.first().json.choices[0].message.content;\n  return { json: { success: true, answer: aiResponse.trim() } };\n} catch (e) {\n  return { json: { success: false, error: \"Failed to generate answer\", details: e.message } };\n}"
+            },
+            "id": "parse-response-node",
+            "name": "Extract Answer",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                640,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ JSON.stringify($json) }}",
+                "options": {}
+            },
+            "id": "respond-success-node",
+            "name": "Respond to Webhook",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1,
+            "position": [
+                860,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Document QA (Groq AI)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Document QA (Groq AI)": {
+            "main": [
+                [
+                    {
+                        "node": "Extract Answer",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extract Answer": {
+            "main": [
+                [
+                    {
+                        "node": "Respond to Webhook",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "active": false,
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "versionId": "v1"
+}

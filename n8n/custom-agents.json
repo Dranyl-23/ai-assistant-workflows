@@ -1,0 +1,120 @@
+{
+    "name": "custom-agents",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "custom-agent",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "id": "webhook-node",
+            "name": "Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                200,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "const agentMap = {\n  researcher: \"You are a deep-dive Research Agent. Analyze the input and provide a detailed report with facts and citations.\",\n  coder: \"You are an expert Senior Software Engineer. Provide high-quality code snippets and technical explanations.\",\n  summarizer: \"You are a Summarization Expert. Condense the input into clear bullet points.\",\n  default: \"You are a helpful AI Assistant specialized in custom tasks.\"\n};\n\nconst body = $input.first().json.body || $input.first().json;\nconst data = body.data || {};\nconst agentName = data.agentName?.toLowerCase() || 'default';\n\nreturn {\n  systemPrompt: agentMap[agentName] || agentMap.default,\n  userInput: data.input || body.input || ''\n};"
+            },
+            "id": "select-agent-node",
+            "name": "Select Agent Personality",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                420,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.groq.com/openai/v1/chat/completions",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer your-groq-api-key"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ model: 'llama-3.1-8b-instant', messages: [ { role: 'system', content: $json.systemPrompt }, { role: 'user', content: $json.userInput } ], temperature: 0.7 }) }}",
+                "options": {}
+            },
+            "id": "groq-agent-node",
+            "name": "Execute Agent Logic",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                640,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ JSON.stringify({\n  success: true,\n  agentResponse: $json.choices[0].message.content\n}) }}",
+                "options": {}
+            },
+            "id": "respond-node",
+            "name": "Respond to Webhook",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1,
+            "position": [
+                860,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Select Agent Personality",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Select Agent Personality": {
+            "main": [
+                [
+                    {
+                        "node": "Execute Agent Logic",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Execute Agent Logic": {
+            "main": [
+                [
+                    {
+                        "node": "Respond to Webhook",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "active": false,
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "versionId": "v1"
+}

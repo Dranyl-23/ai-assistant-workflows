@@ -1,0 +1,120 @@
+{
+    "name": "email-assistant",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "email-assistant",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "id": "webhook-node",
+            "name": "Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                200,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.groq.com/openai/v1/chat/completions",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "Authorization",
+                            "value": "Bearer your-groq-api-key"
+                        },
+                        {
+                            "name": "Content-Type",
+                            "value": "application/json"
+                        }
+                    ]
+                },
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify({ model: 'llama-3.1-8b-instant', messages: [ { role: 'system', content: 'You are an expert Email Assistant. Draft a highly professional, well-formatted email based on the user\\'s instructions. Output ONLY the email content (no introductory text). Ensure the tone is ' + ($json.body.tone || 'professional') + '.' }, { role: 'user', content: 'Context / Instructions for the email:\\n' + $json.body.context } ], temperature: 0.5 }) }}",
+                "options": {}
+            },
+            "id": "groq-email-node",
+            "name": "Draft Email (Groq AI)",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                420,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "jsCode": "try {\n  let aiResponse = $input.first().json.choices[0].message.content;\n  return { json: { success: true, draft: aiResponse.trim() } };\n} catch (e) {\n  return { json: { success: false, error: \"Failed to generate email draft\", details: e.message } };\n}"
+            },
+            "id": "parse-response-node",
+            "name": "Extract Draft",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                640,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ JSON.stringify($json) }}",
+                "options": {}
+            },
+            "id": "respond-success-node",
+            "name": "Respond to Webhook",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1,
+            "position": [
+                860,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Draft Email (Groq AI)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Draft Email (Groq AI)": {
+            "main": [
+                [
+                    {
+                        "node": "Extract Draft",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Extract Draft": {
+            "main": [
+                [
+                    {
+                        "node": "Respond to Webhook",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "active": false,
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "versionId": "v1"
+}
