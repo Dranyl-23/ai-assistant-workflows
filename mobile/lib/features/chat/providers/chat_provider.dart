@@ -310,7 +310,6 @@ class ChatController extends ChangeNotifier {
         'role': 'assistant',
         'content': streamingContent,
       });
-      speak(streamingContent);
       streamingContent = "";
       isTyping = false;
       notifyListeners();

@@ -472,140 +472,103 @@ class ChatScreen extends ConsumerWidget {
         ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
-                  ),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: chatState.isUploading
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF8B5CF6)),
-                              )
-                            : const Icon(LucideIcons.filePlus, color: Color(0xFF64748B), size: 20),
-                        onPressed: chatState.isUploading
-                            ? null
-                            : () => ref.read(chatProvider).uploadFile(),
-                      ),
-                      IconButton(
-                        icon: const Icon(LucideIcons.image, color: Color(0xFF64748B), size: 20),
-                        onPressed: () async {
-                           var status = await Permission.photos.request();
-                           if (status.isPermanentlyDenied) {
-                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gallery permission permanently denied. Opening Settings...')));
-                             await openAppSettings();
-                             return;
-                           }
-                           if (status != PermissionStatus.granted) {
-                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gallery permission required')));
-                             return;
-                           }
-                           final ImagePicker picker = ImagePicker();
-                           final XFile? selected = await picker.pickImage(
-                             source: ImageSource.gallery,
-                             imageQuality: 70,
-                           );
-                           if (selected != null) {
-                             ref.read(chatProvider).setImage(selected);
-                           }
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(LucideIcons.camera, color: Color(0xFF64748B), size: 20),
-                        onPressed: () async {
-                           var status = await Permission.camera.request();
-                           if (status.isPermanentlyDenied) {
-                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Camera permission permanently denied. Opening Settings...')));
-                             await openAppSettings();
-                             return;
-                           }
-                           if (status != PermissionStatus.granted) {
-                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Camera permission required')));
-                             return;
-                           }
-                           final ImagePicker picker = ImagePicker();
-                           final XFile? photo = await picker.pickImage(
-                             source: ImageSource.camera,
-                             imageQuality: 70,
-                           );
-                           if (photo != null) {
-                             ref.read(chatProvider).setImage(photo);
-                           }
-                        },
-                      ),
-                      Expanded(
-                        child: TextField(
-                          controller: chatState.messageController,
-                          style: const TextStyle(color: Colors.white),
-                          onSubmitted: (_) => chatState.sendMessage(onLimitReached: () {
-                            showDialog(
-                              context: context,
-                              barrierDismissible: false,
-                              builder: (context) => const UpgradeModal(),
-                            );
-                          }),
-                          decoration: const InputDecoration(
-                            hintText: 'Message LuminaAI...',
-                            hintStyle: TextStyle(color: Color(0xFF64748B), fontSize: 14),
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(horizontal: 8),
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          chatState.isListening ? LucideIcons.mic : LucideIcons.micOff,
-                          color: chatState.isListening ? const Color(0xFF8B5CF6) : const Color(0xFF64748B),
-                          size: 20
-                        ),
-                        onPressed: () {
-                          final state = ref.read(chatProvider);
-                          if (!state.isListening) {
-                            state.listen();
-                            _showListeningBottomSheet(context, ref);
-                          } else {
-                            state.listen();
-                          }
-                        },
-                      ),
-                    ],
-                  ),
+          // Media Icons (Outside the Chatbox)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  icon: chatState.isUploading
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF8B5CF6)))
+                      : const Icon(LucideIcons.plus, color: Color(0xFF8B5CF6), size: 22),
+                  onPressed: chatState.isUploading ? null : () => ref.read(chatProvider).uploadFile(),
                 ),
-              ),
+                IconButton(
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  icon: const Icon(LucideIcons.image, color: Color(0xFF64748B), size: 20),
+                  onPressed: () async {
+                    final ImagePicker picker = ImagePicker();
+                    final XFile? selected = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+                    if (selected != null) ref.read(chatProvider).setImage(selected);
+                  },
+                ),
+              ],
             ),
           ),
-          const SizedBox(width: 12),
-          GestureDetector(
-            onTap: () => chatState.sendMessage(onLimitReached: () {
-               showDialog(
-                 context: context,
-                 barrierDismissible: false,
-                 builder: (context) => const UpgradeModal(),
-               );
-            }),
+          
+          // The Chatbox Container
+          Expanded(
             child: Container(
-              height: 52,
-              width: 52,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)]),
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(color: const Color(0xFF8B5CF6).withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 4))
+                color: Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: Colors.white.withOpacity(0.1)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: chatState.messageController,
+                      style: const TextStyle(color: Colors.white, fontSize: 15),
+                      maxLines: 5,
+                      minLines: 1,
+                      keyboardType: TextInputType.multiline,
+                      decoration: const InputDecoration(
+                        hintText: 'Message...',
+                        hintStyle: TextStyle(color: Color(0xFF64748B), fontSize: 14),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      ),
+                    ),
+                  ),
+                  
+                  // Mic Icon (Inside)
+                  IconButton(
+                    constraints: const BoxConstraints(),
+                    padding: const EdgeInsets.all(12),
+                    icon: Icon(
+                      chatState.isListening ? LucideIcons.mic : LucideIcons.micOff,
+                      color: chatState.isListening ? const Color(0xFF8B5CF6) : const Color(0xFF64748B),
+                      size: 20
+                    ),
+                    onPressed: () {
+                      final state = ref.read(chatProvider);
+                      if (!state.isListening) {
+                        state.listen();
+                        _showListeningBottomSheet(context, ref);
+                      } else {
+                        state.listen();
+                      }
+                    },
+                  ),
+                  
+                  // Send Icon (Inside)
+                  Padding(
+                    padding: const EdgeInsets.all(6.0),
+                    child: GestureDetector(
+                      onTap: () => chatState.sendMessage(onLimitReached: () {
+                         showDialog(context: context, barrierDismissible: false, builder: (context) => const UpgradeModal());
+                      }),
+                      child: Container(
+                        height: 40,
+                        width: 40,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)]),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(LucideIcons.send, color: Colors.white, size: 18),
+                      ),
+                    ),
+                  ),
                 ],
               ),
-              child: const Icon(LucideIcons.send, color: Colors.white, size: 20),
             ),
           ),
         ],
