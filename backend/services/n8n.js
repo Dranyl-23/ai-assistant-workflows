@@ -114,7 +114,7 @@ async function triggerWorkflow(webhookPath, payload, n8nConfig = null) {
 // ─── Named workflow triggers ──────────────────────────────────────────────────
 
 async function triggerAIChat(message, userId, conversationId) {
-  return triggerWorkflow("ai-chat", {
+  return triggerWorkflow("ai-chat-with-search", {
     message,
     userId,
     conversationId,
@@ -161,9 +161,9 @@ const PROVIDER_WEBHOOK_MAP = {
   task_extractor: "task-extractor",
   email_assistant: "email-assistant",
   document_qa: "document-qa",
-  voice: "voice",
-  ai_chat: "ai-chat",
-  custom_agent: "custom-agent",
+  voice: "voice-synthesizer-free",
+  ai_chat: "ai-chat-with-search",
+  custom_agent: "custom-agents",
 };
 
 /**
