@@ -493,6 +493,12 @@ async function handleChatMessage(socket, data) {
     let { message, conversation_id, image, model } = data;
     const userId = socket.userId;
 
+    if (!userId) {
+      console.error("[Orchestrator] Rejected: Socket has no userId.");
+      socket.emit("chat_error", { error: "authentication_error", message: "Session expired. Please log in again." });
+      return;
+    }
+
     // ── Step 1: Usage enforcement ──────────────────────────────────────────────
     const { allowed, plan } = await enforceUsageLimit(socket, userId);
     if (!allowed) return;
@@ -570,15 +576,23 @@ async function handleChatMessage(socket, data) {
       }
     }
 
-    // ── Step 9: LLM Streaming ──────────────────────────────────────────────────
+    // ── Step 9: LLM Streaming with Timeout ───────────────────────────────────
     let fullResponse = "";
     try {
+      // 30-second hard timeout for the entire AI response generation
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 35000);
+
       fullResponse = await groqService.streamMessage(
         contextMessages,
-        (chunk) => socket.emit("stream_chunk", { chunk }),
+        (chunk) => {
+          socket.emit("stream_chunk", { chunk });
+        },
         image,
         model
       );
+      
+      clearTimeout(timeoutId);
     } catch (llmErr) {
       console.error("[Orchestrator] LLM stream error:", llmErr.message);
       socket.emit("chat_error", { error: "AI failed to respond. Please try again." });
