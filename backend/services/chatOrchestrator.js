@@ -95,7 +95,7 @@ async function enforceUsageLimit(socket, userId) {
     .single();
 
   const plan = profile?.plan || "free";
-  if (plan !== "free") return true; // Pro/enterprise — no limit
+  if (plan !== "free") return { allowed: true, plan }; // Pro/enterprise — no limit
 
   const count = await getUserMessageCount(userId);
   if (count >= FREE_PLAN_LIMIT) {
@@ -103,9 +103,9 @@ async function enforceUsageLimit(socket, userId) {
       error: "Usage limit reached",
       message: `You have reached the limit of ${FREE_PLAN_LIMIT} messages for the Free plan. Please upgrade to Pro in Settings for unlimited access.`,
     });
-    return false;
+    return { allowed: false, plan };
   }
-  return true;
+  return { allowed: true, plan };
 }
 
 /**
@@ -421,6 +421,15 @@ async function processActions(socket, fullResponse, userId) {
     const result = await n8nService.triggerSmartAction(provider, action, data, userId);
     console.log(`[Orchestrator] n8n success:`, result);
 
+    // Log the success
+    await supabaseAdmin.from("action_logs").insert({
+      user_id: userId,
+      provider,
+      action,
+      status: "success",
+      details: { input: data, output: result },
+    }).catch(e => console.error("[Orchestrator] Failed to log action:", e.message));
+
     let feedback = "";
     if (provider === "task_extractor" && result.tasks) {
       feedback =
@@ -445,6 +454,16 @@ async function processActions(socket, fullResponse, userId) {
     }
   } catch (actionErr) {
     console.error("[Orchestrator] n8n trigger failed:", actionErr.message);
+    
+    // Log the error
+    await supabaseAdmin.from("action_logs").insert({
+      user_id: userId,
+      provider,
+      action,
+      status: "error",
+      details: { input: data, error: actionErr.message },
+    }).catch(e => console.error("[Orchestrator] Failed to log error action:", e.message));
+
     const errChunk = `\n\n---\n[SYSTEM ERROR: Action failed: ${actionErr.message}]`;
     socket.emit("stream_chunk", { chunk: errChunk });
     return fullResponse + errChunk;
@@ -462,12 +481,18 @@ async function processActions(socket, fullResponse, userId) {
  * @param {Object} data    - Event payload: { message, conversation_id, web_search, image, model }
  */
 async function handleChatMessage(socket, data) {
-  const { message, conversation_id, image, model } = data;
+  let { message, conversation_id, image, model } = data;
   const userId = socket.userId;
 
   // ── Step 1: Usage enforcement ──────────────────────────────────────────────
-  const allowed = await enforceUsageLimit(socket, userId);
+  const { allowed, plan } = await enforceUsageLimit(socket, userId);
   if (!allowed) return;
+
+  // ── Step 1.5: Model enforcement ───────────────────────────────────────────
+  if (plan === "free" && model && model.includes("70b")) {
+    console.log(`[Orchestrator] Forcing 8B model for free user ${userId}`);
+    model = "llama-3.1-8b-instant";
+  }
 
   // ── Step 2: Conversation ───────────────────────────────────────────────────
   let convId;

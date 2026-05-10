@@ -39,6 +39,15 @@ interface Integration {
   status: string;
 }
 
+interface ActionLog {
+  id: string;
+  provider: string;
+  action: string;
+  status: string;
+  created_at: string;
+  details: any;
+}
+
 interface AppProvider {
   id: string;
   name: string;
@@ -66,6 +75,9 @@ export default function IntegrationsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
   const [isMobile, setIsMobile] = useState(false);
+  const [activeTab, setActiveTab] = useState<"apps" | "logs">("apps");
+  const [logs, setLogs] = useState<ActionLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
 
   // Check for mobile screen size
   useEffect(() => {
@@ -175,6 +187,28 @@ export default function IntegrationsPage() {
   useEffect(() => {
     fetchIntegrations();
   }, [session]);
+
+  useEffect(() => {
+    if (activeTab === "logs" && session?.access_token) {
+      fetchLogs();
+    }
+  }, [activeTab, session]);
+
+  const fetchLogs = async () => {
+    if (!session?.access_token) return;
+    try {
+      setLoadingLogs(true);
+      const res = await fetch(`${BACKEND_URL}/integrations/logs`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await res.json();
+      setLogs(data.logs || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
 
   const filteredProviders = PROVIDERS.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -366,7 +400,44 @@ export default function IntegrationsPage() {
           </div>
         </div>
 
-        {/* Filters & Search */}
+        {/* Tab Switcher */}
+        <div style={{ display: "flex", gap: "12px", marginBottom: "24px", borderBottom: "1px solid rgba(255,255,255,0.05)", paddingBottom: "12px" }}>
+          <button 
+            onClick={() => setActiveTab("apps")} 
+            style={{ 
+              background: "transparent", 
+              border: "none", 
+              color: activeTab === "apps" ? "white" : "var(--text-muted)", 
+              fontWeight: "700", 
+              fontSize: "15px", 
+              cursor: "pointer",
+              padding: "8px 16px",
+              borderBottom: activeTab === "apps" ? "2px solid var(--primary-violet)" : "2px solid transparent"
+            }}
+          >
+            Connected Apps
+          </button>
+          <button 
+            onClick={() => setActiveTab("logs")} 
+            style={{ 
+              background: "transparent", 
+              border: "none", 
+              color: activeTab === "logs" ? "white" : "var(--text-muted)", 
+              fontWeight: "700", 
+              fontSize: "15px", 
+              cursor: "pointer",
+              padding: "8px 16px",
+              borderBottom: activeTab === "logs" ? "2px solid var(--primary-violet)" : "2px solid transparent"
+            }}
+          >
+            Action History Log
+          </button>
+        </div>
+      </header>
+
+      {activeTab === "apps" && (
+        <>
+          {/* Filters & Search */}
         <div style={{ 
           display: "flex", 
           justifyContent: "space-between", 
@@ -426,7 +497,6 @@ export default function IntegrationsPage() {
             />
           </div>
         </div>
-      </header>
 
       {/* Grid Section */}
       {loading && integrations.length === 0 ? (
@@ -553,6 +623,48 @@ export default function IntegrationsPage() {
         {/* Glow Decor */}
         <div style={{ position: "absolute", top: "-50px", right: "-50px", width: "150px", height: "150px", background: "rgba(139, 92, 246, 0.1)", filter: "blur(40px)", borderRadius: "50%" }} />
       </div>
+          </>
+        )}
+
+        {activeTab === "logs" && (
+          <div className="glass-card" style={{ padding: "24px" }}>
+            <h2 style={{ fontSize: "20px", fontWeight: "800", marginBottom: "20px" }}>AI Action History</h2>
+            {loadingLogs ? (
+               <div style={{ display: "flex", justifyContent: "center", padding: "40px" }}><Loader2 size={30} className="animate-spin" color="var(--primary-violet)" /></div>
+            ) : logs.length === 0 ? (
+               <p style={{ color: "var(--text-muted)", textAlign: "center", padding: "40px" }}>No automated actions have been executed yet.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {logs.map((log) => (
+                  <div key={log.id} style={{ 
+                    padding: "16px", 
+                    background: "rgba(255,255,255,0.02)", 
+                    borderRadius: "12px", 
+                    border: "1px solid rgba(255,255,255,0.05)",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center"
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                      <div style={{ 
+                        width: "40px", height: "40px", borderRadius: "10px", 
+                        background: log.status === "success" ? "rgba(16, 185, 129, 0.1)" : "rgba(239, 68, 68, 0.1)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        color: log.status === "success" ? "#10b981" : "#ef4444"
+                      }}>
+                        {log.status === "success" ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
+                      </div>
+                      <div>
+                        <p style={{ fontWeight: "700", fontSize: "15px" }}>{log.action} <span style={{ color: "var(--text-muted)", fontWeight: "500", fontSize: "13px" }}>via {log.provider}</span></p>
+                        <p style={{ color: "var(--text-muted)", fontSize: "12px", marginTop: "4px" }}>{new Date(log.created_at).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
       <style>{`
         .animate-spin { animation: spin 1s linear infinite; }

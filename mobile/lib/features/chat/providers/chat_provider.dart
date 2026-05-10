@@ -66,6 +66,7 @@ class ChatController extends ChangeNotifier {
   bool isConnected = false;
   bool isUploading = false;
   String? errorMessage;
+  String selectedModel = 'llama-3.1-8b-instant'; // Default fast model
 
   final TextEditingController messageController = TextEditingController();
   final ScrollController scrollController = ScrollController();
@@ -78,6 +79,11 @@ class ChatController extends ChangeNotifier {
   ChatController() {
     _initVoice();
     _initChat();
+  }
+
+  void setModel(String model) {
+    selectedModel = model;
+    notifyListeners();
   }
 
   // ── Initialisation ──────────────────────────────────────────────────────────
@@ -503,6 +509,7 @@ class ChatController extends ChangeNotifier {
       'userId': user?.id,
       'conversation_id': conversationId,
       'image': base64Image,
+      'model': selectedModel,
     });
 
     if (text.isNotEmpty) {

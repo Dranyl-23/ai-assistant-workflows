@@ -24,6 +24,27 @@ router.get("/", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/integrations/logs
+// Returns the history of AI actions performed for the user.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/logs", async (req, res) => {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("action_logs")
+      .select("*")
+      .eq("user_id", req.user.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error) throw error;
+    res.json({ logs: data });
+  } catch (err) {
+    console.error("[Integrations] GET /logs:", err.message);
+    res.status(500).json({ error: "Failed to fetch action logs" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/integrations/credentials?token=<credentialToken>
 //
 // SECURE CREDENTIAL HANDOFF ENDPOINT

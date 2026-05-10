@@ -33,7 +33,8 @@ import {
   Zap,
   FileText,
   CheckSquare,
-  Mail
+  Mail,
+  Lock
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -76,6 +77,19 @@ export default function ChatPage() {
   const [streamingContent, setStreamingContent] = useState("");
   const [showSidebar, setShowSidebar] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [userPlan, setUserPlan] = useState("free");
+
+  // Fetch Profile Plan
+  useEffect(() => {
+    if (session?.user) {
+      import("@/lib/supabase").then(({ supabase }) => {
+        supabase.from("profiles").select("plan").eq("id", session.user.id).single()
+          .then(({ data }) => {
+            if (data) setUserPlan(data.plan);
+          });
+      });
+    }
+  }, [session]);
 
   // Check for mobile screen size
   useEffect(() => {
@@ -734,7 +748,8 @@ export default function ChatPage() {
                 >
                   <Cpu size={14} color="var(--primary-violet)" />
                   <span style={{ fontSize: "12px", fontWeight: "700", color: "white" }}>
-                    {selectedModel === "llama-3.1-8b-instant" ? "Llama 8B (Fast)" : "Llama 70B (Smart)"}
+                    {selectedModel === "llama-3.1-8b-instant" ? "Llama 8B (Fast)" : 
+                     selectedModel === "deepseek-r1-distill-llama-70b" ? "DeepSeek R1" : "Llama 70B (Smart)"}
                   </span>
                   <ChevronDown size={14} color="var(--text-muted)" style={{ transform: isModelMenuOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
                 </button>
@@ -752,34 +767,50 @@ export default function ChatPage() {
                     animation: "fadeIn 0.2s ease-out"
                   }}>
                     {[
-                      { id: "llama-3.1-8b-instant", label: "Llama 3.1 8B", desc: "Best for speed & daily chat", icon: <Zap size={16} color="#38bdf8" /> },
-                      { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B", desc: "Complex reasoning & code", icon: <Brain size={16} color="#a78bfa" strokeWidth={2.5} /> }
-                    ].map((m) => (
-                      <button
-                        key={m.id}
-                        onClick={() => { setSelectedModel(m.id); setIsModelMenuOpen(false); }}
-                        style={{ 
-                          width: "100%", 
-                          padding: "12px", 
-                          borderRadius: "10px", 
-                          display: "flex", 
-                          alignItems: "center", 
-                          gap: "12px", 
-                          background: selectedModel === m.id ? "rgba(139, 92, 246, 0.1)" : "transparent",
-                          border: "none",
-                          textAlign: "left",
-                          cursor: "pointer",
-                          transition: "all 0.2s"
-                        }}
-                        className="model-option"
-                      >
-                        <div style={{ padding: "8px", borderRadius: "8px", background: "rgba(255,255,255,0.03)" }}>{m.icon}</div>
-                        <div>
-                          <div style={{ fontSize: "13px", fontWeight: "700", color: selectedModel === m.id ? "var(--primary-violet)" : "white" }}>{m.label}</div>
-                          <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{m.desc}</div>
-                        </div>
-                      </button>
-                    ))}
+                      { id: "llama-3.1-8b-instant", label: "Llama 3.1 8B", desc: "Best for speed & daily chat", icon: <Zap size={16} color="#38bdf8" />, proRequired: false },
+                      { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B", desc: "Complex reasoning & code", icon: <Brain size={16} color="#a78bfa" strokeWidth={2.5} />, proRequired: true },
+                      { id: "deepseek-r1-distill-llama-70b", label: "DeepSeek R1", desc: "Advanced reasoning (Preview)", icon: <Sparkles size={16} color="#6366f1" />, proRequired: true }
+                    ].map((m) => {
+                      const isPro = userPlan === "pro" || userPlan === "enterprise";
+                      const disabled = m.proRequired && !isPro;
+
+                      return (
+                        <button
+                          key={m.id}
+                          onClick={() => {
+                            if (disabled) {
+                              setShowUpgradeModal(true);
+                              setIsModelMenuOpen(false);
+                            } else {
+                              setSelectedModel(m.id);
+                              setIsModelMenuOpen(false);
+                            }
+                          }}
+                          style={{ 
+                            width: "100%", 
+                            padding: "12px", 
+                            borderRadius: "10px", 
+                            display: "flex", 
+                            alignItems: "center", 
+                            gap: "12px", 
+                            background: selectedModel === m.id ? "rgba(139, 92, 246, 0.1)" : "transparent",
+                            border: "none",
+                            textAlign: "left",
+                            cursor: disabled ? "not-allowed" : "pointer",
+                            opacity: disabled ? 0.5 : 1,
+                            transition: "all 0.2s"
+                          }}
+                          className="model-option"
+                        >
+                          <div style={{ padding: "8px", borderRadius: "8px", background: "rgba(255,255,255,0.03)" }}>{m.icon}</div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: "13px", fontWeight: "700", color: selectedModel === m.id ? "var(--primary-violet)" : "white" }}>{m.label}</div>
+                            <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{m.desc}</div>
+                          </div>
+                          {disabled && <Lock size={14} color="rgba(255,255,255,0.3)" />}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>

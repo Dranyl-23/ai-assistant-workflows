@@ -47,7 +47,7 @@ class ChatScreen extends ConsumerWidget {
           key: scaffoldKey,
           backgroundColor: const Color(0xFF020617),
           drawer: _buildDrawer(context, ref),
-          appBar: _buildAppBar(scaffoldKey, chatState.isConnected),
+          appBar: _buildAppBar(scaffoldKey, chatState.isConnected, ref),
           body: Stack(
             children: [
           // Background Glows
@@ -320,7 +320,10 @@ class ChatScreen extends ConsumerWidget {
     );
   }
 
-  PreferredSizeWidget _buildAppBar(GlobalKey<ScaffoldState> key, bool isConnected) {
+  PreferredSizeWidget _buildAppBar(GlobalKey<ScaffoldState> key, bool isConnected, WidgetRef ref) {
+    final chatState = ref.watch(chatProvider);
+    final isPro = chatState.userPlan == 'pro' || chatState.userPlan == 'enterprise';
+
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -354,6 +357,50 @@ class ChatScreen extends ConsumerWidget {
         ],
       ),
       actions: [
+        // Model Picker
+        Container(
+          margin: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white10),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: chatState.selectedModel,
+              dropdownColor: const Color(0xFF1E293B),
+              icon: const Icon(LucideIcons.chevronDown, size: 16, color: Colors.white54),
+              style: GoogleFonts.inter(color: Colors.white, fontSize: 12),
+              items: [
+                const DropdownMenuItem(
+                  value: 'llama-3.1-8b-instant',
+                  child: Text('Llama 8B (Fast)'),
+                ),
+                DropdownMenuItem(
+                  value: 'llama-3.3-70b-versatile',
+                  enabled: isPro,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Llama 70B', style: TextStyle(color: isPro ? Colors.white : Colors.white30)),
+                      if (!isPro) ...[
+                        const SizedBox(width: 6),
+                        const Icon(LucideIcons.lock, size: 12, color: Colors.white30),
+                      ]
+                    ],
+                  ),
+                ),
+              ],
+              onChanged: (val) {
+                if (val != null) {
+                  ref.read(chatProvider).setModel(val);
+                }
+              },
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
         Builder(
           builder: (context) => Padding(
             padding: const EdgeInsets.only(right: 16),
