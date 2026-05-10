@@ -151,13 +151,24 @@ class ChatController extends ChangeNotifier {
 
   Future<List<Map<String, dynamic>>> getConversations() async {
     final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) return [];
+    if (user == null) {
+      print('[ChatProvider] No user found during getConversations');
+      return [];
+    }
     
     // 1. Return cached conversations first for immediate UI update
     final cached = _chatBox.get('conversations_list', defaultValue: []);
-    List<Map<String, dynamic>> convs = List<Map<String, dynamic>>.from(cached);
+    List<Map<String, dynamic>> convs = [];
+    try {
+      if (cached is List) {
+        convs = cached.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+    } catch (e) {
+      print('[ChatProvider] Hive cache error: $e');
+    }
 
     try {
+      print('[ChatProvider] Fetching conversations for user: ${user.id}');
       // 2. Fetch fresh data from Supabase
       final data = await Supabase.instance.client
           .from('conversations')
@@ -166,12 +177,13 @@ class ChatController extends ChangeNotifier {
           .order('updated_at', ascending: false);
       
       final freshConvs = List<Map<String, dynamic>>.from(data);
+      print('[ChatProvider] Successfully fetched ${freshConvs.length} conversations');
       
       // 3. Update cache if data changed
       await _chatBox.put('conversations_list', freshConvs);
       return freshConvs;
     } catch (e) {
-      print('Offline mode: showing cached conversations. Error: $e');
+      print('[ChatProvider] Fetch error: $e');
       return convs; // Fallback to cache if offline/error
     }
   }
