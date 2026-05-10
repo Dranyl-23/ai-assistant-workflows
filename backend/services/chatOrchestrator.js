@@ -489,131 +489,139 @@ async function processActions(socket, fullResponse, userId) {
  * @param {Object} data    - Event payload: { message, conversation_id, web_search, image, model }
  */
 async function handleChatMessage(socket, data) {
-  let { message, conversation_id, image, model } = data;
-  const userId = socket.userId;
-
-  // ── Step 1: Usage enforcement ──────────────────────────────────────────────
-  const { allowed, plan } = await enforceUsageLimit(socket, userId);
-  if (!allowed) return;
-
-  // ── Step 1.5: Model enforcement ───────────────────────────────────────────
-  if (plan === "free" && model && model.includes("70b")) {
-    console.log(`[Orchestrator] Forcing 8B model for free user ${userId}`);
-    model = "llama-3.1-8b-instant";
-  }
-
-  // ── Step 2: Conversation ───────────────────────────────────────────────────
-  let convId;
   try {
-    convId = await ensureConversation(socket, userId, conversation_id, message);
-  } catch (err) {
-    console.error("[Orchestrator] Conversation setup failed:", err.message);
-    socket.emit("chat_error", { error: "Failed to initialise conversation." });
-    return;
-  }
+    let { message, conversation_id, image, model } = data;
+    const userId = socket.userId;
 
-  // ── Step 3: Prior history ──────────────────────────────────────────────────
-  const history = await fetchHistory(convId);
+    // ── Step 1: Usage enforcement ──────────────────────────────────────────────
+    const { allowed, plan } = await enforceUsageLimit(socket, userId);
+    if (!allowed) return;
 
-  // ── Step 4: Save user message ──────────────────────────────────────────────
-  try {
-    await supabaseAdmin.from("messages").insert({
-      id: uuidv4(),
-      conversation_id: convId,
-      role: "user",
-      content: message,
-      metadata: image ? { image } : null,
-      created_at: new Date().toISOString(),
-    });
-  } catch (err) {
-    console.error("[Orchestrator] Failed to save user message:", err.message);
-    // Non-fatal: continue so the user still gets a response
-  }
-
-  // ── Step 5: Personalisation (memories + integrations) ─────────────────────
-  const { memoryContext, integrationContext } = await loadPersonalisationContext(userId);
-
-  // ── Step 6: Build base context messages ───────────────────────────────────
-  let contextMessages = buildContextMessages(history, message, memoryContext, integrationContext);
-
-  // ── Emit stream start ──────────────────────────────────────────────────────
-  socket.emit("stream_start", { conversation_id: convId });
-
-  if (image) {
-    socket.emit("status", { message: "Analysing image with Vision AI..." });
-  }
-
-  // ── Steps 7 & 8: RAG + Search (only for text messages) ────────────────────
-  if (!image) {
-    try {
-      const documentContext = await buildDocumentContext(userId, message);
-      const { searchContext, searchResults: _results } = await buildSearchContext(socket, message);
-
-      // Append document + search context to the last user turn
-      const lastMsg = contextMessages.pop();
-      contextMessages.push({
-        role: "user",
-        content:
-          `${documentContext}\n\n${searchContext}\n\n[USER QUESTION]\n${lastMsg.content}\n\n---\n` +
-          `[STRICT ACTION LOOKUP TABLE]\n` +
-          `- For CODING: [ACTION: custom_agent, run, {"agentName": "coder", "input": "..."}]\n` +
-          `- For RESEARCH: [ACTION: custom_agent, run, {"agentName": "researcher", "input": "..."}]\n` +
-          `- For TASKS: [ACTION: task_extractor, extract, {"text": "..."}]\n` +
-          `- For EMAIL: [ACTION: email_assistant, draft, {"prompt": "..."}]\n` +
-          `- For DISCORD: [ACTION: discord, send_message, {"content": "..."}]\n\n` +
-          `### CONSTRAINTS:\n1. ONLY USE THE PROVIDERS LISTED ABOVE.\n2. DO NOT INVENT NEW PROVIDERS.\n3. RESPOND IN ENGLISH. NO FILLER.`,
-      });
-    } catch (contextErr) {
-      console.error("[Orchestrator] Context build error:", contextErr.message);
-      socket.emit("status", { message: "Knowledge retrieval failed. Answering directly..." });
+    // ── Step 1.5: Model enforcement ───────────────────────────────────────────
+    if (plan === "free" && model && model.includes("70b")) {
+      console.log(`[Orchestrator] Forcing 8B model for free user ${userId}`);
+      model = "llama-3.1-8b-instant";
     }
-  }
 
-  // ── Step 9: LLM Streaming ──────────────────────────────────────────────────
-  let fullResponse = "";
-  try {
-    fullResponse = await groqService.streamMessage(
-      contextMessages,
-      (chunk) => socket.emit("stream_chunk", { chunk }),
-      image,
-      model
-    );
-  } catch (llmErr) {
-    console.error("[Orchestrator] LLM stream error:", llmErr.message);
-    socket.emit("chat_error", { error: "AI failed to respond. Please try again." });
-    return;
-  }
+    // ── Step 2: Conversation ───────────────────────────────────────────────────
+    let convId;
+    try {
+      convId = await ensureConversation(socket, userId, conversation_id, message);
+    } catch (err) {
+      console.error("[Orchestrator] Conversation setup failed:", err.message);
+      socket.emit("chat_error", { error: "Failed to initialise conversation." });
+      return;
+    }
 
-  // ── Step 10: Post-response processing ─────────────────────────────────────
-  await processSaveMemory(fullResponse, userId);
-  fullResponse = await processActions(socket, fullResponse, userId);
+    // ── Step 3: Prior history ──────────────────────────────────────────────────
+    const history = await fetchHistory(convId);
 
-  // ── Step 11: Persist AI response ──────────────────────────────────────────
-  let aiMsgId;
-  try {
-    aiMsgId = uuidv4();
-    await supabaseAdmin.from("messages").insert({
-      id: aiMsgId,
+    // ── Step 4: Save user message ──────────────────────────────────────────────
+    try {
+      await supabaseAdmin.from("messages").insert({
+        id: uuidv4(),
+        conversation_id: convId,
+        role: "user",
+        content: message,
+        metadata: image ? { image } : null,
+        created_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("[Orchestrator] Failed to save user message:", err.message);
+      // Non-fatal: continue so the user still gets a response
+    }
+
+    // ── Step 5: Personalisation (memories + integrations) ─────────────────────
+    const { memoryContext, integrationContext } = await loadPersonalisationContext(userId);
+
+    // ── Step 6: Build base context messages ───────────────────────────────────
+    let contextMessages = buildContextMessages(history, message, memoryContext, integrationContext);
+
+    // ── Emit stream start ──────────────────────────────────────────────────────
+    socket.emit("stream_start", { conversation_id: convId });
+
+    if (image) {
+      socket.emit("status", { message: "Analysing image with Vision AI..." });
+    }
+
+    // ── Steps 7 & 8: RAG + Search (only for text messages) ────────────────────
+    if (!image) {
+      try {
+        const documentContext = await buildDocumentContext(userId, message);
+        const { searchContext, searchResults: _results } = await buildSearchContext(socket, message);
+
+        // Append document + search context to the last user turn
+        const lastMsg = contextMessages.pop();
+        contextMessages.push({
+          role: "user",
+          content:
+            `${documentContext}\n\n${searchContext}\n\n[USER QUESTION]\n${lastMsg.content}\n\n---\n` +
+            `[STRICT ACTION LOOKUP TABLE]\n` +
+            `- For CODING: [ACTION: custom_agent, run, {"agentName": "coder", "input": "..."}]\n` +
+            `- For RESEARCH: [ACTION: custom_agent, run, {"agentName": "researcher", "input": "..."}]\n` +
+            `- For TASKS: [ACTION: task_extractor, extract, {"text": "..."}]\n` +
+            `- For EMAIL: [ACTION: email_assistant, draft, {"prompt": "..."}]\n` +
+            `- For DISCORD: [ACTION: discord, send_message, {"content": "..."}]\n\n` +
+            `### CONSTRAINTS:\n1. ONLY USE THE PROVIDERS LISTED ABOVE.\n2. DO NOT INVENT NEW PROVIDERS.\n3. RESPOND IN ENGLISH. NO FILLER.`,
+        });
+      } catch (contextErr) {
+        console.error("[Orchestrator] Context build error:", contextErr.message);
+        socket.emit("status", { message: "Knowledge retrieval failed. Answering directly..." });
+      }
+    }
+
+    // ── Step 9: LLM Streaming ──────────────────────────────────────────────────
+    let fullResponse = "";
+    try {
+      fullResponse = await groqService.streamMessage(
+        contextMessages,
+        (chunk) => socket.emit("stream_chunk", { chunk }),
+        image,
+        model
+      );
+    } catch (llmErr) {
+      console.error("[Orchestrator] LLM stream error:", llmErr.message);
+      socket.emit("chat_error", { error: "AI failed to respond. Please try again." });
+      return;
+    }
+
+    // ── Step 10: Post-response processing ─────────────────────────────────────
+    await processSaveMemory(fullResponse, userId);
+    fullResponse = await processActions(socket, fullResponse, userId);
+
+    // ── Step 11: Persist AI response ──────────────────────────────────────────
+    let aiMsgId;
+    try {
+      aiMsgId = uuidv4();
+      await supabaseAdmin.from("messages").insert({
+        id: aiMsgId,
+        conversation_id: convId,
+        role: "assistant",
+        content: fullResponse,
+        created_at: new Date().toISOString(),
+      });
+
+      await supabaseAdmin
+        .from("conversations")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", convId);
+    } catch (dbErr) {
+      console.error("[Orchestrator] Failed to persist AI response:", dbErr.message);
+      // Non-fatal: user already received the streamed response
+    }
+
+    // ── Step 12: Finalise ──────────────────────────────────────────────────────
+    socket.emit("stream_end", {
       conversation_id: convId,
-      role: "assistant",
-      content: fullResponse,
-      created_at: new Date().toISOString(),
+      message: { id: aiMsgId, role: "assistant", content: fullResponse },
     });
-
-    await supabaseAdmin
-      .from("conversations")
-      .update({ updated_at: new Date().toISOString() })
-      .eq("id", convId);
-  } catch (dbErr) {
-    console.error("[Orchestrator] Failed to persist AI response:", dbErr.message);
-    // Non-fatal: user already received the streamed response
+  } catch (globalErr) {
+    console.error("[Orchestrator] CRITICAL UNCAUGHT ERROR:", globalErr.message);
+    socket.emit("chat_error", { 
+      error: "server_error",
+      message: "LuminaAI backend encountered an unexpected error. Our engineers have been notified." 
+    });
   }
-
-  // ── Step 12: Finalise ──────────────────────────────────────────────────────
-  socket.emit("stream_end", {
-    conversation_id: convId,
-    message: { id: aiMsgId, role: "assistant", content: fullResponse },
-  });
 }
 
 module.exports = { handleChatMessage, getUserMessageCount };

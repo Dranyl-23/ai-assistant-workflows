@@ -348,6 +348,11 @@ class ChatController extends ChangeNotifier {
   }
 
   Future<void> deleteConversation(String id) async {
+    // Optimistic Update: Remove from local list immediately to prevent Dismissible UI errors
+    final originalConversations = List<Map<String, dynamic>>.from(conversations);
+    conversations.removeWhere((c) => c['id'] == id);
+    notifyListeners();
+
     try {
       await Supabase.instance.client
           .from('conversations')
@@ -357,8 +362,11 @@ class ChatController extends ChangeNotifier {
       if (conversationId == id) {
         clearHistory();
       }
+      // Re-sync with server to be sure
       refreshConversations();
     } catch (e) {
+      // Revert on failure
+      conversations = originalConversations;
       errorMessage = 'Failed to delete conversation: $e';
       notifyListeners();
     }
@@ -503,6 +511,7 @@ class ChatController extends ChangeNotifier {
 
     _socket!.onDisconnect((_) {
       isConnected = false;
+      isTyping = false; // Reset typing state on disconnect to prevent UI freeze
       notifyListeners();
     });
 
@@ -581,6 +590,9 @@ class ChatController extends ChangeNotifier {
       'image': base64Image,
       'model': selectedModel,
     });
+
+    isTyping = true; // Immediate feedback
+    notifyListeners();
 
     if (text.isNotEmpty) {
       messages.add({'role': 'user', 'content': text});
