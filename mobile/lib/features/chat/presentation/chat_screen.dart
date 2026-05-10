@@ -19,13 +19,23 @@ import 'package:mobile/features/chat/presentation/settings_screen.dart';
 
 final drawerSearchProvider = StateProvider<String>((ref) => "");
 
-class ChatScreen extends ConsumerWidget {
+class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+// BUG 4 FIX: All state (including GlobalKey) now lives in _ChatScreenState.
+// Previously GlobalKey was recreated on every build() call (every stream_chunk
+// event), corrupting the scaffold’s internal state and breaking drawer control.
+class _ChatScreenState extends ConsumerState<ChatScreen> {
+  // Stable key that persists across the entire widget lifetime.
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  @override
+  Widget build(BuildContext context) {
     final chatState = ref.watch(chatProvider);
-    final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
 
     // Handle error showing with styled snackbar (#8)
     ref.listen<ChatController>(chatProvider, (previous, next) {
@@ -53,10 +63,10 @@ class ChatScreen extends ConsumerWidget {
       listenable: chatState,
       builder: (context, child) {
         return Scaffold(
-          key: scaffoldKey,
+          key: _scaffoldKey,
           backgroundColor: const Color(0xFF020617),
           drawer: _buildDrawer(context, ref),
-          appBar: _buildAppBar(scaffoldKey, chatState.isConnected, ref),
+          appBar: _buildAppBar(_scaffoldKey, chatState.isConnected, ref),
           body: Stack(
             children: [
           // Background Glows
@@ -748,11 +758,19 @@ class ChatScreen extends ConsumerWidget {
                   color: Color(0xFF06B6D4)),
               title: Text('Read aloud (TTS)',
                   style: GoogleFonts.inter(color: Colors.white)),
+              // BUG 5 FIX: Actually call speak() — previously this was a no-op.
+              // `ref` is available here because _showMessageActions is a method
+              // of _ChatScreenState which has access to ConsumerState.ref.
               onTap: () {
                 Navigator.pop(context);
-                // TTS (#14) — uses the ChatController's speak() method
-                // (accessed via a new ref inside the bottom sheet context)
                 HapticFeedback.lightImpact();
+                final cleanText = content
+                    .replaceAll(RegExp(r'\[.*?\]'), '')
+                    .replaceAll(RegExp(r'[*_`#]'), '')
+                    .trim();
+                if (cleanText.isNotEmpty) {
+                  ref.read(chatProvider).speak(cleanText);
+                }
               },
             ),
             ListTile(

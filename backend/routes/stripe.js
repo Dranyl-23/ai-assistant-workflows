@@ -141,11 +141,42 @@ router.post("/webhook", express.raw({ type: "application/json" }), async (req, r
       });
       break;
 
-    case "customer.subscription.deleted":
-      const subscription = event.data.object;
-      // Handle cancellation...
-      // (Optionally find user by stripe_subscription_id and downgrade to free)
+    // BUG 6 FIX: This was a no-op stub — cancelled users kept Pro access forever.
+    // Now we look up the user by stripe_subscription_id and downgrade them.
+    case "customer.subscription.deleted": {
+      const cancelledSub = event.data.object;
+      console.log(`[Stripe] Subscription cancelled: ${cancelledSub.id}`);
+
+      try {
+        // Find the user linked to this Stripe subscription
+        const { data: subRow } = await supabaseAdmin
+          .from("subscriptions")
+          .select("user_id")
+          .eq("stripe_subscription_id", cancelledSub.id)
+          .single();
+
+        if (subRow?.user_id) {
+          // Downgrade profile to free
+          await supabaseAdmin
+            .from("profiles")
+            .update({ plan: "free" })
+            .eq("id", subRow.user_id);
+
+          // Mark the subscription row as cancelled
+          await supabaseAdmin
+            .from("subscriptions")
+            .update({ status: "cancelled" })
+            .eq("stripe_subscription_id", cancelledSub.id);
+
+          console.log(`[Stripe] User ${subRow.user_id} downgraded to free plan.`);
+        } else {
+          console.warn(`[Stripe] No user found for subscription ${cancelledSub.id} — skipping downgrade.`);
+        }
+      } catch (err) {
+        console.error("[Stripe] Failed to process subscription cancellation:", err.message);
+      }
       break;
+    }
 
     default:
       console.log(`Unhandled event type ${event.type}`);

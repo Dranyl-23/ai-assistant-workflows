@@ -31,8 +31,10 @@ const FREE_PLAN_LIMIT = 50;
  * Handles: [ACTION: provider, action, {...}]
  *          [GITHUB: action, {...}]  (legacy shorthand)
  */
+// BUG 7 FIX: Added the `g` flag so matchAll() picks up EVERY [ACTION:] tag
+// in a single LLM response (previously only the first was dispatched).
 const ACTION_REGEX =
-  /\[(ACTION|GITHUB|DISCORD|SLACK|NOTION|TASK_EXTRACTOR|EMAIL_ASSISTANT|VOICE)\s*:?\s*(?:([^,\]]+)\s*,\s*)?([^,\]]+)\s*,\s*(\{[\s\S]*?\})\s*\]/i;
+  /\[(ACTION|GITHUB|DISCORD|SLACK|NOTION|TASK_EXTRACTOR|EMAIL_ASSISTANT|VOICE)\s*:?\s*(?:([^,\]]+)\s*,\s*)?([^,\]]+)\s*,\s*(\{[\s\S]*?\})\s*\]/gi;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -49,9 +51,12 @@ function safeParseActionData(raw) {
     return JSON.parse(raw);
   } catch {
     try {
+      // BUG 9 FIX: Old regex `(\w+):` also matched colons inside URL values
+      // (e.g. "https:" → '"https":'). New pattern only replaces bare object
+      // keys — tokens that follow `{` or `,` with optional whitespace.
       const fixed = raw
         .replace(/'/g, '"')
-        .replace(/(\w+):/g, '"$1":');
+        .replace(/([{,]\s*)(\w+)\s*:/g, '$1"$2":');
       return JSON.parse(fixed);
     } catch (fixErr) {
       console.error("[Orchestrator] Failed to parse action data:", fixErr.message, "Raw:", raw);
@@ -133,13 +138,16 @@ async function ensureConversation(socket, userId, convId, firstMessage) {
  * STEP 3 – Fetch the last 9 messages for context (before saving the current one).
  */
 async function fetchHistory(convId) {
+  // M5 FIX: Using ascending:true + limit(9) returned the OLDEST 9 messages.
+  // Fetch descending (newest first) then reverse so the LLM receives the
+  // most-recent 9 messages in correct chronological order.
   const { data: history } = await supabaseAdmin
     .from("messages")
     .select("role, content")
     .eq("conversation_id", convId)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(9);
-  return history || [];
+  return (history || []).reverse();
 }
 
 /**
@@ -406,75 +414,81 @@ async function processSaveMemory(fullResponse, userId) {
  * @returns {string} The full response (possibly appended with feedback)
  */
 async function processActions(socket, fullResponse, userId) {
-  if (!ACTION_REGEX.test(fullResponse)) return fullResponse;
+  // BUG 7 FIX: Use matchAll with the global regex to collect ALL [ACTION:] tags.
+  // The old .match() + non-global regex only dispatched the first tag ever emitted.
+  // NOTE: Because ACTION_REGEX has the `g` flag we must reset lastIndex before each
+  // call — matchAll handles this correctly via its internal iterator.
+  const matches = [...fullResponse.matchAll(ACTION_REGEX)];
+  if (matches.length === 0) return fullResponse;
 
-  const actionMatch = fullResponse.match(ACTION_REGEX);
-  if (!actionMatch) return fullResponse;
+  let appendedFeedback = "";
 
-  let provider = (actionMatch[2] || actionMatch[1]).trim().toLowerCase();
-  const action = actionMatch[3].trim();
-  const data = safeParseActionData(actionMatch[4].trim());
+  for (const actionMatch of matches) {
+    let provider = (actionMatch[2] || actionMatch[1]).trim().toLowerCase();
+    const action  = actionMatch[3].trim();
+    const data    = safeParseActionData(actionMatch[4].trim());
 
-  console.log(`[Orchestrator] Triggering action: ${provider}:${action}`);
+    console.log(`[Orchestrator] Triggering action: ${provider}:${action}`);
 
-  try {
-    const result = await n8nService.triggerSmartAction(provider, action, data, userId);
-    console.log(`[Orchestrator] n8n success:`, result);
-
-    // Log the success
     try {
-      await supabaseAdmin.from("action_logs").insert({
-        user_id: userId,
-        provider,
-        action,
-        status: "success",
-        details: { input: data, output: result },
-      });
-    } catch (e) {
-      console.error("[Orchestrator] Failed to log action:", e.message);
-    }
+      const result = await n8nService.triggerSmartAction(provider, action, data, userId);
+      console.log(`[Orchestrator] n8n success for ${provider}:`, result);
 
-    let feedback = "";
-    if (provider === "task_extractor" && result.tasks) {
-      feedback =
-        `[SYSTEM: Tasks Extracted]\n` +
-        result.tasks.map((t) => `- **${t.title}**: ${t.description}`).join("\n");
-    } else if (provider === "email_assistant" && result.draft) {
-      feedback = `[SYSTEM: Email Draft Generated]\n\n${result.draft}`;
-    } else if (provider === "document_qa" && result.answer) {
-      feedback = `[SYSTEM: Document QA Result]\n\n${result.answer}`;
-    } else if (provider === "custom_agent" && result.agentResponse) {
-      feedback = `[SYSTEM: Custom Agent Response]\n\n${result.agentResponse}`;
-    } else if (provider === "voice") {
-      feedback = `[SYSTEM: Voice generation triggered successfully. Audio is being processed.]`;
-    } else if (result.success || result.status === "success") {
-      feedback = `[SYSTEM: ${provider.toUpperCase()} Action Successful]`;
-    }
+      try {
+        await supabaseAdmin.from("action_logs").insert({
+          user_id: userId,
+          provider,
+          action,
+          status: "success",
+          details: { input: data, output: result },
+        });
+      } catch (e) {
+        console.error("[Orchestrator] Failed to log action:", e.message);
+      }
 
-    if (feedback) {
-      const feedbackChunk = `\n\n---\n${feedback}`;
-      socket.emit("stream_chunk", { chunk: feedbackChunk });
-      return fullResponse + feedbackChunk;
-    }
-  } catch (actionErr) {
-    console.error("[Orchestrator] n8n trigger failed:", actionErr.message);
-    
-    // Log the error
-    try {
-      await supabaseAdmin.from("action_logs").insert({
-        user_id: userId,
-        provider,
-        action,
-        status: "error",
-        details: { input: data, error: actionErr.message },
-      });
-    } catch (e) {
-      console.error("[Orchestrator] Failed to log error action:", e.message);
-    }
+      let feedback = "";
+      if (provider === "task_extractor" && result.tasks) {
+        feedback =
+          `[SYSTEM: Tasks Extracted]\n` +
+          result.tasks.map((t) => `- **${t.title}**: ${t.description}`).join("\n");
+      } else if (provider === "email_assistant" && result.draft) {
+        feedback = `[SYSTEM: Email Draft Generated]\n\n${result.draft}`;
+      } else if (provider === "document_qa" && result.answer) {
+        feedback = `[SYSTEM: Document QA Result]\n\n${result.answer}`;
+      } else if (provider === "custom_agent" && result.agentResponse) {
+        feedback = `[SYSTEM: Custom Agent Response]\n\n${result.agentResponse}`;
+      } else if (provider === "voice") {
+        feedback = `[SYSTEM: Voice generation triggered successfully. Audio is being processed.]`;
+      } else if (result.success || result.status === "success") {
+        feedback = `[SYSTEM: ${provider.toUpperCase()} Action Successful]`;
+      }
 
-    const errChunk = `\n\n---\n[SYSTEM ERROR: Action failed: ${actionErr.message}]`;
-    socket.emit("stream_chunk", { chunk: errChunk });
-    return fullResponse + errChunk;
+      if (feedback) {
+        appendedFeedback += `\n\n---\n${feedback}`;
+      }
+    } catch (actionErr) {
+      console.error(`[Orchestrator] n8n trigger failed for ${provider}:`, actionErr.message);
+
+      try {
+        await supabaseAdmin.from("action_logs").insert({
+          user_id: userId,
+          provider,
+          action,
+          status: "error",
+          details: { input: data, error: actionErr.message },
+        });
+      } catch (e) {
+        console.error("[Orchestrator] Failed to log error action:", e.message);
+      }
+
+      appendedFeedback += `\n\n---\n[SYSTEM ERROR: ${provider} action failed: ${actionErr.message}]`;
+    }
+  }
+
+  // Emit all action feedback in a single chunk after all actions have settled.
+  if (appendedFeedback) {
+    socket.emit("stream_chunk", { chunk: appendedFeedback });
+    return fullResponse + appendedFeedback;
   }
 
   return fullResponse;
@@ -583,15 +597,18 @@ async function handleChatMessage(socket, data) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 35000);
 
+      // BUG 1 FIX: Pass controller.signal so the Groq SDK actually honours the
+      // 35-second abort. Without this the AbortController existed but never fired.
       fullResponse = await groqService.streamMessage(
         contextMessages,
         (chunk) => {
           socket.emit("stream_chunk", { chunk });
         },
         image,
-        model
+        model,
+        controller.signal
       );
-      
+
       clearTimeout(timeoutId);
     } catch (llmErr) {
       console.error("[Orchestrator] LLM stream error:", llmErr.message);

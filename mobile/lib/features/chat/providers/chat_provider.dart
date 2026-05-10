@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -73,6 +74,9 @@ class ChatController extends ChangeNotifier {
   bool isConnected = false;
   String? errorMessage;
   String selectedModel = 'llama-3.1-8b-instant'; // Default fast model
+
+  // BUG 8 FIX: Client-side watchdog — cancels isTyping if stream_end never arrives.
+  Timer? _streamTimeout;
 
   final TextEditingController messageController = TextEditingController();
   final ScrollController scrollController = ScrollController();
@@ -354,11 +358,21 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await Supabase.instance.client
-          .from('conversations')
-          .delete()
-          .eq('id', id);
-          
+      // BUG 3 FIX: Call the backend REST endpoint instead of Supabase directly.
+      // The backend route deletes child messages FIRST (avoiding orphaned rows),
+      // then the conversation. Direct Supabase calls bypass this cascade.
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session == null) throw Exception('Not logged in');
+
+      final response = await http.delete(
+        Uri.parse('$backendUrl/api/chat/conversations/$id'),
+        headers: {'Authorization': 'Bearer ${session.accessToken}'},
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) {
+        throw Exception('Server returned ${response.statusCode}: ${response.body}');
+      }
+
       if (conversationId == id) {
         clearHistory();
       }
@@ -529,6 +543,10 @@ class ChatController extends ChangeNotifier {
     });
 
     _socket!.on('stream_end', (data) {
+      // BUG 8 FIX: Cancel the watchdog — response arrived in time.
+      _streamTimeout?.cancel();
+      _streamTimeout = null;
+
       final textToSpeak = streamingContent;
       messages.add({
         'role': 'assistant',
@@ -552,6 +570,10 @@ class ChatController extends ChangeNotifier {
     });
 
     _socket!.on('chat_error', (data) {
+      // BUG 8 FIX: Cancel the watchdog on error too.
+      _streamTimeout?.cancel();
+      _streamTimeout = null;
+
       final err = data['error'] as String? ?? 'Unknown error';
       if (err == 'Usage limit reached') {
         // Re-sync from server so the local count is accurate
@@ -591,6 +613,10 @@ class ChatController extends ChangeNotifier {
       'model': selectedModel,
     });
 
+    // BUG 8 FIX: Start the watchdog immediately after emitting the message.
+    // If stream_end hasn’t arrived within 60 seconds the UI is unfrozen.
+    _startStreamTimeout();
+
     isTyping = true; // Immediate feedback
     notifyListeners();
 
@@ -620,6 +646,26 @@ class ChatController extends ChangeNotifier {
     scrollToBottom();
   }
 
+  // ── Stream Timeout Watchdog (BUG 8) ────────────────────────────────────────
+
+  /// Starts (or restarts) a 60-second watchdog timer.
+  /// If the server drops the connection mid-stream the timer fires, resets
+  /// [isTyping], and shows an error so the UI doesn’t freeze permanently.
+  void _startStreamTimeout() {
+    _streamTimeout?.cancel();
+    _streamTimeout = Timer(const Duration(seconds: 60), () {
+      if (isTyping) {
+        isTyping = false;
+        streamingContent = '';
+        errorMessage = 'Response timed out. Please try again.';
+        notifyListeners();
+        if (kDebugMode) {
+          debugPrint('[ChatProvider] Stream watchdog fired — response timed out.');
+        }
+      }
+    });
+  }
+
   // ── Scroll ───────────────────────────────────────────────────────────────────
 
   void scrollToBottom() {
@@ -638,6 +684,7 @@ class ChatController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _streamTimeout?.cancel(); // BUG 8 FIX: Clean up watchdog timer
     _socket?.dispose();
     messageController.dispose();
     scrollController.dispose();

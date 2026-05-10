@@ -90,18 +90,23 @@ async function sendMessage(messages, imageBase64 = null) {
  * @param {string|null} customModel - Override the default model
  * @returns {string} Complete response text (concatenation of all chunks)
  */
-async function streamMessage(messages, onChunk, imageBase64 = null, customModel = null) {
+async function streamMessage(messages, onChunk, imageBase64 = null, customModel = null, signal = null) {
   const model = imageBase64 ? VISION_MODEL : (customModel || DEFAULT_MODEL);
   const formattedMessages = formatMessages(messages, imageBase64);
   let fullText = "";
 
   try {
-    const stream = await groq.chat.completions.create({
-      model,
-      max_tokens: 4096,
-      stream: true,
-      messages: formattedMessages, // caller provides system message — no duplication
-    });
+    const stream = await groq.chat.completions.create(
+      {
+        model,
+        max_tokens: 4096,
+        stream: true,
+        messages: formattedMessages, // caller provides system message — no duplication
+      },
+      // BUG 1 FIX: Forward the AbortSignal so the 35-second orchestrator timeout
+      // actually cancels the in-flight Groq request.
+      signal ? { signal } : undefined
+    );
 
     for await (const chunk of stream) {
       const content = chunk.choices[0]?.delta?.content || "";
@@ -113,17 +118,21 @@ async function streamMessage(messages, onChunk, imageBase64 = null, customModel 
   } catch (error) {
     console.error("[Groq] Stream error:", error.message);
 
+    // BUG 2 FIX: Non-fatal vision fallback — give the user a graceful notice
+    // and return the partial text collected so far.
     if (imageBase64 && (error.message.includes("model_decommissioned") || error.message.includes("vision"))) {
       const notice =
         "\n\n*System Notice: Groq's Vision model is temporarily unavailable on your API tier. " +
         "Please ask text-based questions while access is restored.*";
       fullText += notice;
       if (onChunk) onChunk(notice);
-    } else {
-      const errMsg = `\n\n*[System Error]: ${error.message}*`;
-      fullText += errMsg;
-      if (onChunk) onChunk(errMsg);
+      return fullText;
     }
+
+    // BUG 2 FIX: Fatal error — re-throw so the orchestrator's catch block fires
+    // and emits `chat_error`. This prevents error text from being persisted to
+    // the DB as if it were a valid AI message.
+    throw error;
   }
 
   return fullText;
