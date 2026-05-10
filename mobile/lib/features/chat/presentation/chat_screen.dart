@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,11 +9,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:mobile/features/subscription/presentation/upgrade_modal.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'dart:io';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mobile/features/chat/providers/chat_provider.dart';
-import 'package:mobile/features/auth/presentation/login_screen.dart';
 import 'package:mobile/features/chat/presentation/settings_screen.dart';
 // DocumentsScreen, IntegrationsScreen, SettingsScreen are now permanent tabs
 // inside MainShell — no longer pushed from the drawer.
@@ -23,7 +20,7 @@ class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
 
   @override
-  State<ChatScreen> createState() => _ChatScreenState();
+  ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
 // BUG 4 FIX: All state (including GlobalKey) now lives in _ChatScreenState.

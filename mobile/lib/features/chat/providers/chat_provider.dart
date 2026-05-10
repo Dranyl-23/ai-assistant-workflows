@@ -217,7 +217,7 @@ class ChatController extends ChangeNotifier {
       }
     } catch (e) {
       if (kDebugMode) debugPrint('[ChatProvider] Stripe request error: $e');
-      throw e;
+      rethrow;
     }
   }
 
