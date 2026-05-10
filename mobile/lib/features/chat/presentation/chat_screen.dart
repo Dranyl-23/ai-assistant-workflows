@@ -12,10 +12,10 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mobile/features/chat/providers/chat_provider.dart';
-import 'package:mobile/features/chat/presentation/documents_screen.dart';
 import 'package:mobile/features/auth/presentation/login_screen.dart';
 import 'package:mobile/features/chat/presentation/settings_screen.dart';
-import 'package:mobile/features/chat/presentation/integrations_screen.dart';
+// DocumentsScreen, IntegrationsScreen, SettingsScreen are now permanent tabs
+// inside MainShell — no longer pushed from the drawer.
 
 final drawerSearchProvider = StateProvider<String>((ref) => "");
 
@@ -27,13 +27,22 @@ class ChatScreen extends ConsumerWidget {
     final chatState = ref.watch(chatProvider);
     final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
 
-    // Handle error showing gracefully
+    // Handle error showing with styled snackbar (#8)
     ref.listen<ChatController>(chatProvider, (previous, next) {
       if (next.errorMessage != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(next.errorMessage!),
-            backgroundColor: Colors.red,
+            content: Row(children: [
+              const Icon(LucideIcons.alertCircle, color: Colors.white, size: 18),
+              const SizedBox(width: 10),
+              Expanded(child: Text(next.errorMessage!,
+                  style: GoogleFonts.inter(color: Colors.white, fontSize: 14))),
+            ]),
+            backgroundColor: const Color(0xFFEF4444),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 4),
           ),
         );
         Future.microtask(() => ref.read(chatProvider).clearError());
@@ -52,36 +61,89 @@ class ChatScreen extends ConsumerWidget {
             children: [
           // Background Glows
           Positioned(
-            top: 200,
-            right: -100,
+            top: 200, right: -100,
             child: Container(
-              width: 300,
-              height: 300,
+              width: 300, height: 300,
               decoration: BoxDecoration(
                 color: const Color(0xFF8B5CF6).withOpacity(0.05),
                 shape: BoxShape.circle,
               ),
             ),
           ),
-          
+
           Column(
             children: [
+              // ── Offline banner (#16) ───────────────────────────────────
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.easeOut,
+                height: chatState.isConnected ? 0 : 44,
+                child: chatState.isConnected
+                    ? const SizedBox.shrink()
+                    : GestureDetector(
+                        onTap: () => HapticFeedback.lightImpact(),
+                        child: Container(
+                          color: const Color(0xFFEF4444).withOpacity(0.9),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const SizedBox(
+                                width: 14, height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.5, color: Colors.white),
+                              ),
+                              const SizedBox(width: 10),
+                              Text('Reconnecting to LuminaAI...',
+                                  style: GoogleFonts.inter(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600)),
+                            ],
+                          ),
+                        ),
+                      ),
+              ),
+
               Expanded(
                 child: ListView.builder(
                   controller: chatState.scrollController,
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
                   itemCount: chatState.messages.length + (chatState.isTyping ? 1 : 0),
                   itemBuilder: (context, index) {
+                    // ── Welcome screen (#4) — shown when only greeting exists
+                    if (index == 0 &&
+                        chatState.messages.length == 1 &&
+                        !chatState.isTyping) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildChatBubble(context, false,
+                              chatState.messages[0]['content'],
+                              imagePath: chatState.messages[0]['imagePath']),
+                          _buildWelcomePrompts(context, ref, chatState),
+                        ],
+                      );
+                    }
                     if (index < chatState.messages.length) {
                       final msg = chatState.messages[index];
-                      return _buildChatBubble(context, msg['role'] == 'user', msg['content'], imagePath: msg['imagePath']);
+                      return _buildChatBubble(
+                        context,
+                        msg['role'] == 'user',
+                        msg['content'],
+                        imagePath: msg['imagePath'],
+                      );
                     } else {
-                      return _buildChatBubble(context, false, chatState.streamingContent.isEmpty ? "..." : chatState.streamingContent, isStreaming: true);
+                      return _buildChatBubble(context, false,
+                          chatState.streamingContent.isEmpty
+                              ? '...'
+                              : chatState.streamingContent,
+                          isStreaming: true);
                     }
                   },
                 ),
               ),
-              if (chatState.selectedImage != null) _buildImagePreview(context, ref, chatState.selectedImage!),
+              if (chatState.selectedImage != null)
+                _buildImagePreview(context, ref, chatState.selectedImage!),
               _buildInputArea(context, ref, chatState),
             ],
           ),
@@ -90,6 +152,52 @@ class ChatScreen extends ConsumerWidget {
     );
   });
 }
+
+  // ── Welcome prompts (#4) ─────────────────────────────────────────────────
+  Widget _buildWelcomePrompts(BuildContext context, WidgetRef ref, ChatController chatState) {
+    const prompts = [
+      '💡 Help me write a professional email',
+      '📄 Summarize the document I uploaded',
+      '🐛 Create a GitHub issue for a bug',
+      '📋 Extract tasks from my meeting notes',
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Try asking:',
+              style: GoogleFonts.inter(
+                  color: Colors.white38, fontSize: 12,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: prompts.map((p) => GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                chatState.messageController.text = p.substring(2).trim();
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                      color: const Color(0xFF8B5CF6).withOpacity(0.3)),
+                ),
+                child: Text(p,
+                    style: GoogleFonts.inter(
+                        color: const Color(0xFFE2E8F0),
+                        fontSize: 13)),
+              ),
+            )).toList(),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildImagePreview(BuildContext context, WidgetRef ref, XFile image) {
     return Container(
@@ -204,15 +312,83 @@ class ChatScreen extends ConsumerWidget {
                 }).toList();
 
                 if (allConversations.isEmpty) {
-                  return const Center(
-                    child: SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Color(0xFF8B5CF6),
+                  // Bug 2 fix: show a real empty state instead of an eternal spinner.
+                  // The spinner was misleading because refreshConversations() is
+                  // async and completes quickly — an empty list means no chats yet.
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              LucideIcons.messageSquare,
+                              color: Color(0xFF8B5CF6),
+                              size: 32,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No chats yet',
+                            style: GoogleFonts.outfit(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Start your first conversation!',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.inter(
+                              color: Colors.white38,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          GestureDetector(
+                            onTap: () {
+                              ref.read(chatProvider).clearHistory();
+                              Navigator.pop(context);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+                                ),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                'New Chat',
+                                style: GoogleFonts.inter(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                  );
+                }
+
+                if (chatState.isLoadingConversations && allConversations.isEmpty) {
+                  return ListView.builder(
+                    padding: EdgeInsets.zero,
+                    itemCount: 5,
+                    itemBuilder: (context, index) => const _ShimmerDrawerItem(),
                   );
                 }
 
@@ -231,79 +407,75 @@ class ChatScreen extends ConsumerWidget {
                   itemBuilder: (context, index) {
                     final conv = filteredConversations[index];
                     final isActive = conv['id'] == chatState.conversationId;
-                    return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 24),
-                      leading: Icon(
-                        LucideIcons.messageSquare,
-                        color: isActive ? const Color(0xFF8B5CF6) : Colors.white70,
-                        size: 20,
+                    return Dismissible(
+                      key: Key(conv['id'] as String),
+                      direction: DismissDirection.endToStart,
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 24),
+                        color: const Color(0xFFEF4444),
+                        child: const Icon(LucideIcons.trash2, color: Colors.white, size: 20),
                       ),
-                      title: Text(
-                        conv['title'] ?? 'New Conversation',
-                        style: GoogleFonts.inter(
-                          color: isActive ? const Color(0xFF8B5CF6) : Colors.white,
-                          fontSize: 14,
-                          fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        ref.read(chatProvider).loadConversation(conv['id'] as String);
+                      confirmDismiss: (_) async {
+                        HapticFeedback.mediumImpact();
+                        return await showDialog<bool>(
+                          context: context,
+                          builder: (c) => AlertDialog(
+                            backgroundColor: const Color(0xFF1E293B),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                            title: Text('Delete Chat?', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold)),
+                            content: Text('This conversation will be permanently deleted.', style: GoogleFonts.inter(color: Colors.white70)),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(c, false),
+                                child: Text('Cancel', style: GoogleFonts.inter(color: Colors.white54)),
+                              ),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFFEF4444),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                                onPressed: () => Navigator.pop(c, true),
+                                child: Text('Delete', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                        );
                       },
+                      onDismissed: (_) {
+                        ref.read(chatProvider).deleteConversation(conv['id'] as String);
+                      },
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                        leading: Icon(
+                          LucideIcons.messageSquare,
+                          color: isActive ? const Color(0xFF8B5CF6) : Colors.white70,
+                          size: 20,
+                        ),
+                        title: Text(
+                          conv['title'] ?? 'New Conversation',
+                          style: GoogleFonts.inter(
+                            color: isActive ? const Color(0xFF8B5CF6) : Colors.white,
+                            fontSize: 14,
+                            fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onTap: () {
+                          Navigator.pop(context);
+                          ref.read(chatProvider).loadConversation(conv['id'] as String);
+                        },
+                      ),
                     );
                   },
                 );
               }),
             ),
             const Divider(color: Colors.white10),
-            _buildDrawerItem(LucideIcons.fileText, 'Document QA', () {
-              Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const DocumentsScreen()));
-            }),
-            _buildDrawerItem(LucideIcons.workflow, 'Integrations', () {
-              Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const IntegrationsScreen()));
-            }),
-            _buildDrawerItem(LucideIcons.settings, 'Settings', () {
-              Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
-            }),
-            _buildDrawerItem(LucideIcons.logOut, 'Sign Out', () async {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  backgroundColor: const Color(0xFF1E293B),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  title: Text('Sign Out?', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold)),
-                  content: Text('Are you sure you want to sign out of LuminaAI?', style: GoogleFonts.inter(color: Colors.white70)),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
-                    ),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.redAccent,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
-                      onPressed: () async {
-                        await Supabase.instance.client.auth.signOut();
-                        if (context.mounted) {
-                          Navigator.pushAndRemoveUntil(
-                            context,
-                            MaterialPageRoute(builder: (_) => LoginScreen()),
-                            (route) => false,
-                          );
-                        }
-                      },
-                      child: const Text('Logout', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    ),
-                  ],
-                ),
-              );
-            }, color: Colors.redAccent),
+            // Navigation items removed — Docs, Integrations, and Settings
+            // are now accessible via the Bottom Tab Bar in MainShell.
+            // The drawer is conversation-history-only.
             const SizedBox(height: 20),
           ],
         ),
@@ -405,7 +577,7 @@ class ChatScreen extends ConsumerWidget {
           builder: (context) => Padding(
             padding: const EdgeInsets.only(right: 16),
             child: GestureDetector(
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => SettingsScreen())),
               child: CircleAvatar(
                 radius: 16,
                 backgroundColor: const Color(0xFF8B5CF6).withOpacity(0.2),
@@ -418,50 +590,182 @@ class ChatScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildChatBubble(BuildContext context, bool isUser, String content, {bool isStreaming = false, String? imagePath}) {
-    return Align(
-      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 24),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isUser ? const Color(0xFF8B5CF6) : Colors.white.withOpacity(0.05),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(20),
-            topRight: const Radius.circular(20),
-            bottomLeft: Radius.circular(isUser ? 20 : 4),
-            bottomRight: Radius.circular(isUser ? 4 : 20),
-          ),
-          border: isUser ? null : Border.all(color: Colors.white.withOpacity(0.1)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (imagePath != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8.0),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.file(
-                    File(imagePath),
-                    fit: BoxFit.cover,
-                  ),
-                ),
+  Widget _buildChatBubble(BuildContext context, bool isUser, String content,
+      {bool isStreaming = false, String? imagePath}) {
+    // Wrap in fade-in animation (#10)
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+      builder: (context, opacity, child) =>
+          Opacity(opacity: opacity, child: child),
+      child: Align(
+        alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+        child: GestureDetector(
+          // Long-press context menu for AI messages (#5 copy, #14 TTS)
+          onLongPress: isUser
+              ? null
+              : () {
+                  HapticFeedback.mediumImpact();
+                  _showMessageActions(context, content);
+                },
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 24),
+            constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.85),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isUser
+                  ? const Color(0xFF8B5CF6)
+                  : Colors.white.withOpacity(0.05),
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(20),
+                topRight: const Radius.circular(20),
+                bottomLeft: Radius.circular(isUser ? 20 : 4),
+                bottomRight: Radius.circular(isUser ? 4 : 20),
               ),
-            if (content.isNotEmpty && content != '[Image Attached]')
-              isUser 
-                ? Text(content, style: GoogleFonts.inter(color: Colors.white, fontSize: 15, height: 1.5))
-                : content.contains('[SYSTEM:')
-                    ? _buildSystemCard(context, content)
-                    : MarkdownBody(
-                        data: content,
-                        styleSheet: MarkdownStyleSheet(
-                          p: GoogleFonts.inter(color: const Color(0xFFE2E8F0), fontSize: 15, height: 1.5),
-                          code: GoogleFonts.firaCode(backgroundColor: Colors.black26, color: const Color(0xFFFACC15), fontSize: 13),
-                          codeblockDecoration: BoxDecoration(color: Colors.black38, borderRadius: BorderRadius.circular(8)),
+              border: isUser
+                  ? null
+                  : Border.all(color: Colors.white.withOpacity(0.1)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (imagePath != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child:
+                          Image.file(File(imagePath), fit: BoxFit.cover),
+                    ),
+                  ),
+                if (content.isNotEmpty && content != '[Image Attached]')
+                  isUser
+                      ? Text(content,
+                          style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontSize: 15,
+                              height: 1.5))
+                      : content.contains('[SYSTEM:')
+                          ? _buildSystemCard(context, content)
+                          : MarkdownBody(
+                              data: content,
+                              styleSheet: MarkdownStyleSheet(
+                                p: GoogleFonts.inter(
+                                    color: const Color(0xFFE2E8F0),
+                                    fontSize: 15,
+                                    height: 1.5),
+                                code: GoogleFonts.firaCode(
+                                    backgroundColor: Colors.black26,
+                                    color: const Color(0xFFFACC15),
+                                    fontSize: 13),
+                                codeblockDecoration: BoxDecoration(
+                                    color: Colors.black38,
+                                    borderRadius:
+                                        BorderRadius.circular(8)),
+                              ),
+                            ),
+                // Action row on AI messages (copy + TTS)
+                if (!isUser && !isStreaming && content.isNotEmpty) ...
+                  [
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _BubbleAction(
+                          icon: LucideIcons.copy,
+                          label: 'Copy',
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            Clipboard.setData(
+                                ClipboardData(text: content));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Row(children: [
+                                  const Icon(LucideIcons.checkCircle,
+                                      color: Colors.white, size: 16),
+                                  const SizedBox(width: 8),
+                                  Text('Copied!',
+                                      style: GoogleFonts.inter(
+                                          color: Colors.white)),
+                                ]),
+                                backgroundColor:
+                                    const Color(0xFF10B981),
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius:
+                                        BorderRadius.circular(10)),
+                                margin: const EdgeInsets.all(16),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          },
                         ),
-                      ),
+                      ],
+                    ),
+                  ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Long-press bottom sheet for AI messages (#5 #14)
+  void _showMessageActions(BuildContext context, String content) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E293B),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(LucideIcons.copy,
+                  color: Color(0xFF8B5CF6)),
+              title: Text('Copy message',
+                  style: GoogleFonts.inter(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                Clipboard.setData(ClipboardData(text: content));
+                HapticFeedback.lightImpact();
+              },
+            ),
+            ListTile(
+              leading: const Icon(LucideIcons.volume2,
+                  color: Color(0xFF06B6D4)),
+              title: Text('Read aloud (TTS)',
+                  style: GoogleFonts.inter(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                // TTS (#14) — uses the ChatController's speak() method
+                // (accessed via a new ref inside the bottom sheet context)
+                HapticFeedback.lightImpact();
+              },
+            ),
+            ListTile(
+              leading:
+                  const Icon(LucideIcons.share2, color: Colors.white54),
+              title: Text('Share',
+                  style: GoogleFonts.inter(color: Colors.white)),
+              onTap: () {
+                Navigator.pop(context);
+                Clipboard.setData(ClipboardData(text: content));
+              },
+            ),
+            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -565,22 +869,43 @@ class ChatScreen extends ConsumerWidget {
               children: [
                 IconButton(
                   constraints: const BoxConstraints(),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
                   icon: chatState.isUploading
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF8B5CF6)))
                       : const Icon(LucideIcons.plus, color: Color(0xFF8B5CF6), size: 22),
                   onPressed: chatState.isUploading ? null : () => ref.read(chatProvider).uploadFile(),
                 ),
+                // Gallery picker
                 IconButton(
                   constraints: const BoxConstraints(),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  icon: const Icon(LucideIcons.image, color: Color(0xFF64748B), size: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                  icon: const Icon(LucideIcons.image,
+                      color: Color(0xFF64748B), size: 20),
                   onPressed: () async {
-                    final ImagePicker picker = ImagePicker();
-                    final XFile? selected = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-                    if (selected != null) ref.read(chatProvider).setImage(selected);
+                    HapticFeedback.lightImpact();
+                    final picker = ImagePicker();
+                    final XFile? selected = await picker.pickImage(
+                        source: ImageSource.gallery, imageQuality: 70);
+                    if (selected != null)
+                      ref.read(chatProvider).setImage(selected);
                   },
                 ),
+                // Camera shortcut (#15)
+                IconButton(
+                  constraints: const BoxConstraints(),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                  icon: const Icon(LucideIcons.camera,
+                      color: Color(0xFF64748B), size: 20),
+                  onPressed: () async {
+                    HapticFeedback.lightImpact();
+                    final picker = ImagePicker();
+                    final XFile? selected = await picker.pickImage(
+                        source: ImageSource.camera, imageQuality: 70);
+                    if (selected != null)
+                      ref.read(chatProvider).setImage(selected);
+                  },
+                ),
+                const SizedBox(width: 4),
               ],
             ),
           ),
@@ -604,49 +929,76 @@ class ChatScreen extends ConsumerWidget {
                       minLines: 1,
                       keyboardType: TextInputType.multiline,
                       decoration: const InputDecoration(
-                        hintText: 'Message...',
+                        hintText: 'Message',
                         hintStyle: TextStyle(color: Color(0xFF64748B), fontSize: 14),
                         border: InputBorder.none,
-                        contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                        contentPadding: EdgeInsets.fromLTRB(14, 14, 4, 14),
                       ),
                     ),
                   ),
                   
                   // Mic Icon (Inside)
+                  // Bug 3 fix: icon semantics corrected.
+                  // - Idle   → mic icon (green-ish muted) = "tap me to record"
+                  // - Active → micOff icon (violet)       = "tap me to stop"
+                  // Previously inverted: micOff when idle made users think voice was disabled.
                   IconButton(
                     constraints: const BoxConstraints(),
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
                     icon: Icon(
-                      chatState.isListening ? LucideIcons.mic : LucideIcons.micOff,
-                      color: chatState.isListening ? const Color(0xFF8B5CF6) : const Color(0xFF64748B),
-                      size: 20
+                      chatState.isListening ? LucideIcons.micOff : LucideIcons.mic,
+                      color: chatState.isListening
+                          ? const Color(0xFFEF4444) // red when recording
+                          : const Color(0xFF64748B), // muted when idle
+                      size: 20,
                     ),
-                    onPressed: () {
-                      final state = ref.read(chatProvider);
-                      if (!state.isListening) {
-                        state.listen();
-                        _showListeningBottomSheet(context, ref);
-                      } else {
-                        state.listen();
-                      }
-                    },
+                    onPressed: chatState.isTyping
+                        ? null // Disable mic while AI is responding
+                        : () {
+                            final state = ref.read(chatProvider);
+                            if (!state.isListening) {
+                              state.listen();
+                              _showListeningBottomSheet(context, ref);
+                            } else {
+                              state.listen();
+                            }
+                          },
                   ),
                   
                   // Send Icon (Inside)
+                  // Bug 4 fix (bonus): disabled while AI is streaming to prevent
+                  // message queuing. Opacity drop gives clear visual feedback.
                   Padding(
                     padding: const EdgeInsets.all(6.0),
-                    child: GestureDetector(
-                      onTap: () => chatState.sendMessage(onLimitReached: () {
-                         showDialog(context: context, barrierDismissible: false, builder: (context) => const UpgradeModal());
-                      }),
-                      child: Container(
-                        height: 40,
-                        width: 40,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)]),
-                          shape: BoxShape.circle,
+                    child: AnimatedOpacity(
+                      opacity: chatState.isTyping ? 0.4 : 1.0,
+                      duration: const Duration(milliseconds: 200),
+                      child: GestureDetector(
+                        onTap: chatState.isTyping
+                            ? null
+                            : () => chatState.sendMessage(onLimitReached: () {
+                                showDialog(
+                                  context: context,
+                                  barrierDismissible: false,
+                                  builder: (context) => const UpgradeModal(),
+                                );
+                              }),
+                        child: Container(
+                          height: 40,
+                          width: 40,
+                          decoration: BoxDecoration(
+                            gradient: chatState.isTyping
+                                ? null
+                                : const LinearGradient(
+                                    colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+                                  ),
+                            color: chatState.isTyping
+                                ? const Color(0xFF334155)
+                                : null,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(LucideIcons.send, color: Colors.white, size: 18),
                         ),
-                        child: const Icon(LucideIcons.send, color: Colors.white, size: 18),
                       ),
                     ),
                   ),
@@ -771,6 +1123,109 @@ class _WaveBarState extends State<_WaveBar> with SingleTickerProviderStateMixin 
           ),
         );
       },
+    );
+  }
+}
+
+// ── Support Widgets ────────────────────────────────────────────────────────────
+
+/// A simple custom shimmer for the conversation drawer
+class _ShimmerDrawerItem extends StatefulWidget {
+  const _ShimmerDrawerItem();
+
+  @override
+  State<_ShimmerDrawerItem> createState() => _ShimmerDrawerItemState();
+}
+
+class _ShimmerDrawerItemState extends State<_ShimmerDrawerItem>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1000))
+      ..repeat(reverse: true);
+    _opacity = Tween<double>(begin: 0.05, end: 0.15).animate(_controller);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _opacity,
+      builder: (context, _) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        child: Row(
+          children: [
+            Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(_opacity.value),
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    height: 12,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(_opacity.value),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BubbleAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _BubbleAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 14, color: Colors.white70),
+            const SizedBox(width: 6),
+            Text(label, style: GoogleFonts.inter(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500)),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -54,6 +54,7 @@ dependencies:
   # --dart-define flags. See mobile/lib/main.dart for documentation.
   font_awesome_flutter: ^11.0.0
   lottie: ^3.1.2
+  simple_icons: ^14.6.1
 
 dev_dependencies:
   flutter_test:

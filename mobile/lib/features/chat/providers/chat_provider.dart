@@ -13,6 +13,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // ── App Config ────────────────────────────────────────────────────────────────
 // Backend URL is injected at build time via --dart-define=BACKEND_URL=...
@@ -63,8 +64,13 @@ class ChatController extends ChangeNotifier {
   String userPlan = 'free';
 
   String? conversationId;
+  bool _isUploading = false;
+  bool get isUploading => _isUploading;
+
+  bool _isLoadingConversations = false;
+  bool get isLoadingConversations => _isLoadingConversations;
+
   bool isConnected = false;
-  bool isUploading = false;
   String? errorMessage;
   String selectedModel = 'llama-3.1-8b-instant'; // Default fast model
 
@@ -170,6 +176,47 @@ class ChatController extends ChangeNotifier {
     }
   }
 
+  /// Initiates a real Stripe Checkout session for the Pro plan
+  Future<void> startStripeUpgrade() async {
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) throw Exception('Not logged in');
+
+    try {
+      final response = await http.post(
+        Uri.parse('$backendUrl/api/stripe/create-checkout-session'),
+        headers: {
+          'Authorization': 'Bearer ${session.accessToken}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'priceId': 'price_auto_pro', // Placeholder if backend expects it, but backend hardcodes it right now
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final checkoutUrl = data['url'];
+        
+        if (checkoutUrl != null) {
+          final uri = Uri.parse(checkoutUrl);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          } else {
+            throw Exception('Could not launch Stripe URL');
+          }
+        } else {
+          throw Exception('No URL returned from Stripe');
+        }
+      } else {
+        if (kDebugMode) debugPrint('[ChatProvider] Stripe failed: ${response.statusCode} - ${response.body}');
+        throw Exception('Stripe Checkout failed to initialize');
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[ChatProvider] Stripe request error: $e');
+      throw e;
+    }
+  }
+
   /// Returns true if the user has NOT hit their message limit.
   bool get canSendMessage =>
       messageLimit == null || messageCount < messageLimit!;
@@ -251,6 +298,9 @@ class ChatController extends ChangeNotifier {
 
   Future<void> _fetchConversationsFromServer(String userId) async {
     try {
+      _isLoadingConversations = true;
+      notifyListeners();
+
       final data = await Supabase.instance.client
           .from('conversations')
           .select('id, title, created_at, updated_at')
@@ -265,8 +315,11 @@ class ChatController extends ChangeNotifier {
       // Persist to Hive for next cold start
       await _chatBox.put('conversations_list', freshConvs);
 
+      _isLoadingConversations = false;
       notifyListeners();
     } catch (e) {
+      _isLoadingConversations = false;
+      notifyListeners();
       if (kDebugMode) debugPrint('[ChatProvider] Fetch conversations error: $e');
     }
   }
@@ -290,6 +343,23 @@ class ChatController extends ChangeNotifier {
       scrollToBottom();
     } catch (e) {
       errorMessage = 'Failed to load conversation: $e';
+      notifyListeners();
+    }
+  }
+
+  Future<void> deleteConversation(String id) async {
+    try {
+      await Supabase.instance.client
+          .from('conversations')
+          .delete()
+          .eq('id', id);
+          
+      if (conversationId == id) {
+        clearHistory();
+      }
+      refreshConversations();
+    } catch (e) {
+      errorMessage = 'Failed to delete conversation: $e';
       notifyListeners();
     }
   }
@@ -318,7 +388,7 @@ class ChatController extends ChangeNotifier {
       if (result == null || result.files.single.path == null) return;
 
       final file = File(result.files.single.path!);
-      isUploading = true;
+      _isUploading = true;
       notifyListeners();
 
       final session = Supabase.instance.client.auth.currentSession;
@@ -346,7 +416,7 @@ class ChatController extends ChangeNotifier {
     } catch (e) {
       errorMessage = 'Error uploading file: $e';
     } finally {
-      isUploading = false;
+      _isUploading = false;
       notifyListeners();
       _saveHistory();
       scrollToBottom();

@@ -2,9 +2,18 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mobile/features/chat/providers/chat_provider.dart';
 
-class UpgradeModal extends StatelessWidget {
+class UpgradeModal extends ConsumerStatefulWidget {
   const UpgradeModal({super.key});
+
+  @override
+  ConsumerState<UpgradeModal> createState() => _UpgradeModalState();
+}
+
+class _UpgradeModalState extends ConsumerState<UpgradeModal> {
+  bool _isLoading = false;
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +79,28 @@ class UpgradeModal extends StatelessWidget {
               _buildButton(
                 'Upgrade to Pro',
                 const Color(0xFF8B5CF6),
-                () {},
+                () async {
+                  setState(() => _isLoading = true);
+                  
+                  try {
+                    await ref.read(chatProvider).startStripeUpgrade();
+                    
+                    if (context.mounted) {
+                      Navigator.pop(context); // Close modal when checkout opens
+                    }
+                  } catch (e) {
+                    setState(() => _isLoading = false);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Failed to open Stripe checkout. Please try again.'),
+                          backgroundColor: Colors.redAccent,
+                          duration: Duration(seconds: 4),
+                        ),
+                      );
+                    }
+                  }
+                },
               ),
               const SizedBox(height: 12),
               
@@ -106,10 +136,16 @@ class UpgradeModal extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(16),
           child: Center(
-            child: Text(
-              text,
-              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-            ),
+            child: _isLoading 
+                ? const SizedBox(
+                    height: 24, 
+                    width: 24, 
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3)
+                  )
+                : Text(
+                    text,
+                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
           ),
         ),
       ),

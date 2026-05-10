@@ -32,7 +32,7 @@ const FREE_PLAN_LIMIT = 50;
  *          [GITHUB: action, {...}]  (legacy shorthand)
  */
 const ACTION_REGEX =
-  /\[(ACTION|GITHUB|DISCORD|SLACK|NOTION|TASK_EXTRACTOR|EMAIL_ASSISTANT|VOICE)\s*:?\s*([^,\]]+)?\s*,?\s*([^,\]]+),\s*(\{[\s\S]*?\})\s*\]/i;
+  /\[(ACTION|GITHUB|DISCORD|SLACK|NOTION|TASK_EXTRACTOR|EMAIL_ASSISTANT|VOICE)\s*:?\s*(?:([^,\]]+)\s*,\s*)?([^,\]]+)\s*,\s*(\{[\s\S]*?\})\s*\]/i;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -422,13 +422,17 @@ async function processActions(socket, fullResponse, userId) {
     console.log(`[Orchestrator] n8n success:`, result);
 
     // Log the success
-    await supabaseAdmin.from("action_logs").insert({
-      user_id: userId,
-      provider,
-      action,
-      status: "success",
-      details: { input: data, output: result },
-    }).catch(e => console.error("[Orchestrator] Failed to log action:", e.message));
+    try {
+      await supabaseAdmin.from("action_logs").insert({
+        user_id: userId,
+        provider,
+        action,
+        status: "success",
+        details: { input: data, output: result },
+      });
+    } catch (e) {
+      console.error("[Orchestrator] Failed to log action:", e.message);
+    }
 
     let feedback = "";
     if (provider === "task_extractor" && result.tasks) {
@@ -456,13 +460,17 @@ async function processActions(socket, fullResponse, userId) {
     console.error("[Orchestrator] n8n trigger failed:", actionErr.message);
     
     // Log the error
-    await supabaseAdmin.from("action_logs").insert({
-      user_id: userId,
-      provider,
-      action,
-      status: "error",
-      details: { input: data, error: actionErr.message },
-    }).catch(e => console.error("[Orchestrator] Failed to log error action:", e.message));
+    try {
+      await supabaseAdmin.from("action_logs").insert({
+        user_id: userId,
+        provider,
+        action,
+        status: "error",
+        details: { input: data, error: actionErr.message },
+      });
+    } catch (e) {
+      console.error("[Orchestrator] Failed to log error action:", e.message);
+    }
 
     const errChunk = `\n\n---\n[SYSTEM ERROR: Action failed: ${actionErr.message}]`;
     socket.emit("stream_chunk", { chunk: errChunk });

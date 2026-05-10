@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:mobile/features/chat/presentation/chat_screen.dart';
+import 'package:mobile/features/shell/main_shell.dart';
 import 'package:mobile/features/auth/presentation/login_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -59,7 +59,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) => 
-          session != null ? const ChatScreen() : const LoginScreen(),
+          session != null ? const MainShell() : const LoginScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(opacity: animation, child: child);
         },
