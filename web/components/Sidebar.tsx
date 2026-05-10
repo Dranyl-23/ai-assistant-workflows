@@ -18,25 +18,40 @@ const navItems = [
 ];
 
 interface SidebarProps {
-  /** Controlled collapsed state — owned by the parent layout */
   collapsed?: boolean;
-  /** Called when the user toggles the sidebar */
   onToggle?: (collapsed: boolean) => void;
+  isMobile?: boolean;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
-export default function Sidebar({ collapsed: controlledCollapsed, onToggle }: SidebarProps = {}) {
+export default function Sidebar({ 
+  collapsed: controlledCollapsed, 
+  onToggle,
+  isMobile = false,
+  mobileOpen = false,
+  onMobileClose
+}: SidebarProps = {}) {
   const { user, signOut } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  // Support both controlled (layout owns state) and uncontrolled (internal state)
   const [internalCollapsed, setInternalCollapsed] = useState(false);
-  const collapsed = controlledCollapsed !== undefined ? controlledCollapsed : internalCollapsed;
+  const collapsed = isMobile ? false : (controlledCollapsed !== undefined ? controlledCollapsed : internalCollapsed);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   const handleToggle = () => {
+    if (isMobile) {
+      onMobileClose?.();
+      return;
+    }
     const next = !collapsed;
     setInternalCollapsed(next);
     onToggle?.(next);
+  };
+
+  const handleNavClick = (href: string) => {
+    router.push(href);
+    if (isMobile) onMobileClose?.();
   };
 
   const handleSignOut = async () => {
@@ -67,18 +82,19 @@ export default function Sidebar({ collapsed: controlledCollapsed, onToggle }: Si
       )}
 
       <aside style={{
-        width: collapsed ? "72px" : "260px",
+        width: isMobile ? "280px" : (collapsed ? "72px" : "260px"),
         height: "100vh",
         position: "fixed",
-        left: 0,
+        left: isMobile ? (mobileOpen ? "0" : "-280px") : 0,
         top: 0,
         display: "flex",
         flexDirection: "column",
-        background: "rgba(9, 9, 11, 0.95)",
+        background: "rgba(9, 9, 11, 0.98)",
         borderRight: "1px solid var(--border-primary)",
-        transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
         zIndex: 50,
         overflow: "hidden",
+        boxShadow: isMobile && mobileOpen ? "20px 0 50px rgba(0,0,0,0.5)" : "none",
       }}>
         {/* Logo */}
         <div style={{
@@ -118,13 +134,13 @@ export default function Sidebar({ collapsed: controlledCollapsed, onToggle }: Si
             return (
               <button
                 key={item.href}
-                onClick={() => router.push(item.href)}
+                onClick={() => handleNavClick(item.href)}
                 style={{
                   width: "100%",
                   display: "flex",
                   alignItems: "center",
                   gap: "12px",
-                  padding: collapsed ? "10px 12px" : "10px 14px",
+                  padding: collapsed ? "10px 12px" : "12px 14px",
                   borderRadius: "8px",
                   border: "none",
                   cursor: "pointer",

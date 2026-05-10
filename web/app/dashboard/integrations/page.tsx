@@ -65,6 +65,17 @@ export default function IntegrationsPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Check for mobile screen size
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   // Config Modal State
   const [configModal, setConfigModal] = useState<{
@@ -304,7 +315,14 @@ export default function IntegrationsPage() {
 
       {/* Header Section */}
       <header style={{ marginBottom: "40px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "32px" }}>
+        <div style={{ 
+          display: "flex", 
+          justifyContent: "space-between", 
+          alignItems: isMobile ? "flex-start" : "flex-end", 
+          flexDirection: isMobile ? "column" : "row",
+          gap: isMobile ? "24px" : "0",
+          marginBottom: "32px" 
+        }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px" }}>
               <div style={{
@@ -319,14 +337,23 @@ export default function IntegrationsPage() {
               }}>
                 <Plus size={24} />
               </div>
-              <h1 style={{ fontSize: "32px", fontWeight: "800", letterSpacing: "-0.02em" }}>App Integrations</h1>
+              <h1 style={{ fontSize: isMobile ? "26px" : "32px", fontWeight: "800", letterSpacing: "-0.02em" }}>App Integrations</h1>
             </div>
-            <p style={{ color: "var(--text-muted)", marginLeft: "52px", fontSize: "15px" }}>
+            <p style={{ color: "var(--text-muted)", marginLeft: isMobile ? "0" : "52px", fontSize: "14px" }}>
               Bridge your favorite tools with LuminaAI for seamless automation.
             </p>
           </div>
 
-          <div style={{ display: "flex", gap: "24px", background: "rgba(255,255,255,0.03)", padding: "12px 24px", borderRadius: "16px", border: "1px solid rgba(255,255,255,0.05)" }}>
+          <div style={{ 
+            display: "flex", 
+            gap: "24px", 
+            background: "rgba(255,255,255,0.03)", 
+            padding: "12px 24px", 
+            borderRadius: "16px", 
+            border: "1px solid rgba(255,255,255,0.05)",
+            width: isMobile ? "100%" : "auto",
+            justifyContent: isMobile ? "center" : "flex-end"
+          }}>
             <div style={{ textAlign: "right" }}>
               <p style={{ fontSize: "10px", color: "var(--text-muted)", fontWeight: "800", textTransform: "uppercase", letterSpacing: "0.05em" }}>Connected</p>
               <p style={{ fontSize: "20px", fontWeight: "800", color: "#10b981" }}>{integrations.length}</p>
@@ -340,8 +367,23 @@ export default function IntegrationsPage() {
         </div>
 
         {/* Filters & Search */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "20px" }}>
-          <div style={{ display: "flex", gap: "8px", background: "rgba(15, 23, 42, 0.3)", padding: "6px", borderRadius: "14px", border: "1px solid rgba(255,255,255,0.05)" }}>
+        <div style={{ 
+          display: "flex", 
+          justifyContent: "space-between", 
+          alignItems: isMobile ? "stretch" : "center", 
+          flexDirection: isMobile ? "column" : "row",
+          gap: "20px" 
+        }}>
+          <div style={{ 
+            display: "flex", 
+            gap: "8px", 
+            background: "rgba(15, 23, 42, 0.3)", 
+            padding: "6px", 
+            borderRadius: "14px", 
+            border: "1px solid rgba(255,255,255,0.05)",
+            overflowX: "auto",
+            scrollbarWidth: "none" // Hide scrollbar for cleaner look
+          }}>
             {CATEGORIES.map(cat => (
               <button
                 key={cat}
@@ -354,6 +396,7 @@ export default function IntegrationsPage() {
                   transition: "all 0.2s",
                   border: "none",
                   cursor: "pointer",
+                  whiteSpace: "nowrap",
                   background: activeCategory === cat ? "var(--primary-violet)" : "transparent",
                   color: activeCategory === cat ? "white" : "var(--text-muted)",
                 }}
@@ -363,7 +406,7 @@ export default function IntegrationsPage() {
             ))}
           </div>
 
-          <div style={{ position: "relative", flex: 1, maxWidth: "350px" }}>
+          <div style={{ position: "relative", flex: 1, maxWidth: isMobile ? "100%" : "350px" }}>
             <Search size={18} color="var(--text-muted)" style={{ position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)" }} />
             <input
               className="glass-input"
@@ -391,7 +434,11 @@ export default function IntegrationsPage() {
           <Loader2 size={40} className="animate-spin" color="var(--primary-violet)" />
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", gap: "24px" }}>
+        <div style={{ 
+          display: "grid", 
+          gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(350px, 1fr))", 
+          gap: "20px" 
+        }}>
           {filteredProviders.map((app) => {
             const connected = integrations.some(i => i.provider === app.id);
             return (
@@ -464,12 +511,14 @@ export default function IntegrationsPage() {
       {/* n8n Automation Hero */}
       <div className="glass-card" style={{
         marginTop: "60px",
-        padding: "48px",
+        padding: isMobile ? "32px 24px" : "48px",
         background: "linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(99, 102, 241, 0.05) 100%)",
         border: "1px solid rgba(139, 92, 246, 0.2)",
         display: "flex",
+        flexDirection: isMobile ? "column" : "row",
         justifyContent: "space-between",
-        alignItems: "center",
+        alignItems: isMobile ? "flex-start" : "center",
+        gap: isMobile ? "32px" : "0",
         position: "relative",
         overflow: "hidden"
       }}>

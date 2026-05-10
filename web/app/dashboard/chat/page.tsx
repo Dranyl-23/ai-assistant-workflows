@@ -75,6 +75,19 @@ export default function ChatPage() {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState("");
   const [showSidebar, setShowSidebar] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Check for mobile screen size
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth <= 768;
+      setIsMobile(mobile);
+      if (mobile) setShowSidebar(false); // Hide chat history sidebar on mobile by default
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
   
   // Modal State
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; convId: string | null; convTitle: string }>({
@@ -174,23 +187,39 @@ export default function ChatPage() {
     socket.connect();
     socket.emit("authenticate", session.access_token);
 
-    socket.on("stream_start", ({ conversation_id }) => {
+    // Fired by backend the moment a NEW conversation row is created.
+    // Optimistically add it to the sidebar list so the user sees it instantly
+    // without waiting for the stream_end network refresh.
+    socket.on("conversation_created", ({ id, title }: { id: string; title: string }) => {
+      setCurrentConversationId(id);
+      setConversations((prev) => {
+        const alreadyExists = prev.some((c) => c.id === id);
+        if (alreadyExists) return prev;
+        return [{ id, title: title || "New Conversation", created_at: new Date().toISOString(), updated_at: new Date().toISOString() }, ...prev];
+      });
+    });
+
+    socket.on("stream_start", ({ conversation_id }: { conversation_id: string }) => {
       setCurrentConversationId(conversation_id);
       setStreamingContent("");
       setIsLoading(true);
-      fetchConversations();
+      // Note: fetchConversations() removed from here — conversation_created
+      // handles new conversations optimistically. Fetching here was redundant
+      // and caused unnecessary network traffic before the AI even replied.
     });
 
-    socket.on("stream_chunk", ({ chunk }) => {
+    socket.on("stream_chunk", ({ chunk }: { chunk: string }) => {
       setStreamingContent((prev) => prev + chunk);
     });
 
-    socket.on("stream_end", async ({ message }) => {
+    socket.on("stream_end", async ({ message }: { message: any }) => {
       setMessages((prev) => [...prev, message]);
       setStreamingContent("");
       setIsLoading(false);
       setIsSearching(false);
       setCurrentStatus("");
+      // Only refresh here — the conversation title may have been generated
+      // by the backend after the first message, so we fetch the updated title.
       fetchConversations();
     });
 
@@ -271,6 +300,7 @@ export default function ChatPage() {
     }
 
     return () => {
+      socket.off("conversation_created");
       socket.off("stream_start");
       socket.off("stream_chunk");
       socket.off("stream_end");
@@ -530,15 +560,16 @@ export default function ChatPage() {
 
       {/* Sidebar - Chat History */}
       <div style={{
-        width: showSidebar ? "280px" : "0",
-        background: "rgba(15, 23, 42, 0.4)",
+        width: showSidebar ? (isMobile ? "100%" : "280px") : "0",
+        position: isMobile ? "fixed" : "relative",
+        inset: isMobile ? 0 : "auto",
+        background: isMobile ? "rgba(15, 23, 42, 0.98)" : "rgba(15, 23, 42, 0.4)",
         borderRight: "1px solid var(--border-primary)",
         display: "flex",
         flexDirection: "column",
         transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
         overflow: "hidden",
-        position: "relative",
-        zIndex: 20,
+        zIndex: isMobile ? 100 : 20,
         flexShrink: 0,
         height: "100%"
       }}>
@@ -640,147 +671,151 @@ export default function ChatPage() {
 
       {/* Main Chat Area */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative", background: "rgba(15, 23, 42, 0.2)", flexShrink: 0 }}>
-        <button 
-          onClick={() => setShowSidebar(!showSidebar)} 
-          style={{ 
-            position: "absolute", 
-            // Sit on the divider: -16px overlaps the inner sidebar edge when open,
-            // 8px inside the left edge when sidebar is collapsed
-            left: showSidebar ? "-16px" : "8px", 
-            top: "50%", 
-            transform: "translateY(-50%)", 
-            background: "rgba(30, 41, 59, 0.95)", 
-            border: "1px solid var(--border-primary)", 
-            borderRadius: "50%", 
-            width: "32px", 
-            height: "32px", 
-            display: "flex", 
-            alignItems: "center", 
-            justifyContent: "center", 
-            color: "white", 
-            cursor: "pointer", 
-            zIndex: 100, 
-            transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)", 
-            boxShadow: "0 8px 24px rgba(0,0,0,0.5)" 
-          }}
-        >
-          {showSidebar ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
-        </button>
+        {!isMobile && (
+          <button 
+            onClick={() => setShowSidebar(!showSidebar)} 
+            style={{ 
+              position: "absolute", 
+              left: showSidebar ? "-16px" : "8px", 
+              top: "50%", 
+              transform: "translateY(-50%)", 
+              background: "rgba(30, 41, 59, 0.95)", 
+              border: "1px solid var(--border-primary)", 
+              borderRadius: "50%", 
+              width: "32px", 
+              height: "32px", 
+              display: "flex", 
+              alignItems: "center", 
+              justifyContent: "center", 
+              color: "white", 
+              cursor: "pointer", 
+              zIndex: 100, 
+              transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)", 
+              boxShadow: "0 8px 24px rgba(0,0,0,0.5)" 
+            }}
+          >
+            {showSidebar ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+          </button>
+        )}
 
-        {/* Header */}
-        <div style={{ padding: "20px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(15, 23, 42, 0.8)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(255, 255, 255, 0.03)", flexShrink: 0, zIndex: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-            <div style={{ width: "40px", height: "40px", borderRadius: "12px", background: "var(--gradient-primary)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 15px rgba(139, 92, 246, 0.4)" }}>
-              <Bot size={22} color="white" />
+        {/* Header (Desktop Only) */}
+        {!isMobile && (
+          <div style={{ padding: "20px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(15, 23, 42, 0.8)", backdropFilter: "blur(12px)", borderBottom: "1px solid rgba(255, 255, 255, 0.03)", flexShrink: 0, zIndex: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+              <div style={{ width: "40px", height: "40px", borderRadius: "12px", background: "var(--gradient-primary)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 15px rgba(139, 92, 246, 0.4)" }}>
+                <Bot size={22} color="white" />
+              </div>
+              <div>
+                <h2 style={{ fontSize: "17px", fontWeight: "800", letterSpacing: "0.02em", color: "white" }}>LuminaAI Engine</h2>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--primary-violet)", fontWeight: "600", marginTop: "2px" }}>
+                  <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10B981", boxShadow: "0 0 10px #10B981" }} />
+                  {currentConversationId ? "Active Orchestration" : "Ready for Commands"}
+                </div>
+              </div>
             </div>
-            <div>
-              <h2 style={{ fontSize: "17px", fontWeight: "800", letterSpacing: "0.02em", color: "white" }}>LuminaAI Engine</h2>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--primary-violet)", fontWeight: "600", marginTop: "2px" }}>
-                <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#10B981", boxShadow: "0 0 10px #10B981" }} />
-                {currentConversationId ? "Active Orchestration" : "Ready for Commands"}
+
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              {/* Custom Model Switcher */}
+              <div style={{ position: "relative" }} ref={modelMenuRef}>
+                <button 
+                  onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
+                  style={{ 
+                    display: "flex", 
+                    alignItems: "center", 
+                    gap: "10px", 
+                    background: "rgba(255,255,255,0.03)", 
+                    padding: "8px 14px", 
+                    borderRadius: "14px", 
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    cursor: "pointer",
+                    transition: "all 0.2s"
+                  }}
+                  className="hover-icon"
+                >
+                  <Cpu size={14} color="var(--primary-violet)" />
+                  <span style={{ fontSize: "12px", fontWeight: "700", color: "white" }}>
+                    {selectedModel === "llama-3.1-8b-instant" ? "Llama 8B (Fast)" : "Llama 70B (Smart)"}
+                  </span>
+                  <ChevronDown size={14} color="var(--text-muted)" style={{ transform: isModelMenuOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+                </button>
+
+                {isModelMenuOpen && (
+                  <div className="glass-card" style={{ 
+                    position: "absolute", 
+                    top: "calc(100% + 10px)", 
+                    right: 0, 
+                    width: "240px", 
+                    padding: "8px", 
+                    zIndex: 100, 
+                    boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    animation: "fadeIn 0.2s ease-out"
+                  }}>
+                    {[
+                      { id: "llama-3.1-8b-instant", label: "Llama 3.1 8B", desc: "Best for speed & daily chat", icon: <Zap size={16} color="#38bdf8" /> },
+                      { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B", desc: "Complex reasoning & code", icon: <Brain size={16} color="#a78bfa" strokeWidth={2.5} /> }
+                    ].map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => { setSelectedModel(m.id); setIsModelMenuOpen(false); }}
+                        style={{ 
+                          width: "100%", 
+                          padding: "12px", 
+                          borderRadius: "10px", 
+                          display: "flex", 
+                          alignItems: "center", 
+                          gap: "12px", 
+                          background: selectedModel === m.id ? "rgba(139, 92, 246, 0.1)" : "transparent",
+                          border: "none",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          transition: "all 0.2s"
+                        }}
+                        className="model-option"
+                      >
+                        <div style={{ padding: "8px", borderRadius: "8px", background: "rgba(255,255,255,0.03)" }}>{m.icon}</div>
+                        <div>
+                          <div style={{ fontSize: "13px", fontWeight: "700", color: selectedModel === m.id ? "var(--primary-violet)" : "white" }}>{m.label}</div>
+                          <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{m.desc}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            {/* Custom Model Switcher */}
-            <div style={{ position: "relative" }} ref={modelMenuRef}>
-              <button 
-                onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
-                style={{ 
-                  display: "flex", 
-                  alignItems: "center", 
-                  gap: "10px", 
-                  background: "rgba(255,255,255,0.03)", 
-                  padding: "8px 14px", 
-                  borderRadius: "14px", 
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  cursor: "pointer",
-                  transition: "all 0.2s"
-                }}
-                className="hover-icon"
-              >
-                <Cpu size={14} color="var(--primary-violet)" />
-                <span style={{ fontSize: "12px", fontWeight: "700", color: "white" }}>
-                  {selectedModel === "llama-3.1-8b-instant" ? "Llama 8B (Fast)" : "Llama 70B (Smart)"}
-                </span>
-                <ChevronDown size={14} color="var(--text-muted)" style={{ transform: isModelMenuOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
-              </button>
-
-              {isModelMenuOpen && (
-                <div className="glass-card" style={{ 
-                  position: "absolute", 
-                  top: "calc(100% + 10px)", 
-                  right: 0, 
-                  width: "240px", 
-                  padding: "8px", 
-                  zIndex: 100, 
-                  boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  animation: "fadeIn 0.2s ease-out"
-                }}>
-                  {[
-                    { id: "llama-3.1-8b-instant", label: "Llama 3.1 8B", desc: "Best for speed & daily chat", icon: <Zap size={16} color="#38bdf8" /> },
-                    { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B", desc: "Complex reasoning & code", icon: <Brain size={16} color="#a78bfa" strokeWidth={2.5} /> }
-                  ].map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => { setSelectedModel(m.id); setIsModelMenuOpen(false); }}
-                      style={{ 
-                        width: "100%", 
-                        padding: "12px", 
-                        borderRadius: "10px", 
-                        display: "flex", 
-                        alignItems: "center", 
-                        gap: "12px", 
-                        background: selectedModel === m.id ? "rgba(139, 92, 246, 0.1)" : "transparent",
-                        border: "none",
-                        textAlign: "left",
-                        cursor: "pointer",
-                        transition: "all 0.2s"
-                      }}
-                      className="model-option"
-                    >
-                      <div style={{ padding: "8px", borderRadius: "8px", background: "rgba(255,255,255,0.03)" }}>{m.icon}</div>
-                      <div>
-                        <div style={{ fontSize: "13px", fontWeight: "700", color: selectedModel === m.id ? "var(--primary-violet)" : "white" }}>{m.label}</div>
-                        <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{m.desc}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        )}
 
         {/* Messages Container */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "24px 24px 40px", display: "flex", flexDirection: "column", gap: "32px" }} className="chat-scroll">
+        <div style={{ 
+          flex: 1, 
+          overflowY: "auto", 
+          padding: isMobile ? "12px 12px 30px" : "24px 24px 40px", 
+          display: "flex", 
+          flexDirection: "column", 
+          gap: isMobile ? "20px" : "32px" 
+        }} className="chat-scroll">
           {messages.length === 0 && !streamingContent && (
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "32px", color: "var(--text-muted)", animation: "fadeIn 0.5s ease-out" }}>
-              <div style={{ width: "80px", height: "80px", borderRadius: "24px", background: "var(--gradient-primary)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 20px 40px rgba(139, 92, 246, 0.3)", animation: "float 4s ease-in-out infinite" }}><Sparkles size={40} color="white" /></div>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "24px", color: "var(--text-muted)", animation: "fadeIn 0.5s ease-out", padding: "20px" }}>
+              <div style={{ width: "64px", height: "64px", borderRadius: "20px", background: "var(--gradient-primary)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 20px 40px rgba(139, 92, 246, 0.3)", animation: "float 4s ease-in-out infinite" }}><Sparkles size={32} color="white" /></div>
               <div style={{ textAlign: "center" }}>
-                <h3 style={{ fontSize: "24px", fontWeight: "700", color: "white", marginBottom: "8px" }}>How can I help you today?</h3>
-                <p style={{ fontSize: "15px", maxWidth: "400px", lineHeight: "1.5" }}>Talk to me, upload documents, or search the web.</p>
+                <h3 style={{ fontSize: isMobile ? "20px" : "24px", fontWeight: "700", color: "white", marginBottom: "8px" }}>How can I help you?</h3>
+                <p style={{ fontSize: "14px", maxWidth: "400px", lineHeight: "1.5" }}>Talk to me, upload documents, or search the web.</p>
               </div>
               
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px", width: "100%", maxWidth: "700px", marginTop: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px", width: "100%", maxWidth: "500px", marginTop: "8px" }}>
                 {[
-                  { title: "Summarize Document", desc: "Extract key points from my latest file", icon: <FileText size={18} /> },
-                  { title: "Extract Tasks", desc: "Find actionable items from text", icon: <CheckSquare size={18} /> },
-                  { title: "Draft Email", desc: "Write a professional email", icon: <Mail size={18} /> },
-                  { title: "Search Web", desc: "Find latest news and info", icon: <Globe size={18} /> }
+                  { title: "Summarize Document", icon: <FileText size={16} /> },
+                  { title: "Search Web", icon: <Globe size={16} /> }
                 ].map((prompt, idx) => (
                   <button 
                     key={idx}
                     onClick={() => { setInput(prompt.title); document.getElementById('chat-input')?.focus(); }}
-                    style={{ background: "rgba(15, 23, 42, 0.4)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "16px", padding: "16px", textAlign: "left", cursor: "pointer", transition: "all 0.2s" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(139, 92, 246, 0.1)"; e.currentTarget.style.borderColor = "var(--primary-violet)" }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(15, 23, 42, 0.4)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.05)" }}
+                    style={{ background: "rgba(15, 23, 42, 0.4)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "14px", padding: "14px", textAlign: "left", cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", gap: "12px" }}
                   >
-                    <div style={{ color: "var(--primary-violet)", marginBottom: "8px" }}>{prompt.icon}</div>
-                    <div style={{ color: "white", fontSize: "14px", fontWeight: "600", marginBottom: "4px" }}>{prompt.title}</div>
-                    <div style={{ color: "var(--text-muted)", fontSize: "12px" }}>{prompt.desc}</div>
+                    <div style={{ color: "var(--primary-violet)" }}>{prompt.icon}</div>
+                    <div style={{ color: "white", fontSize: "13px", fontWeight: "600" }}>{prompt.title}</div>
                   </button>
                 ))}
               </div>
@@ -788,7 +823,14 @@ export default function ChatPage() {
           )}
 
           {messages.map((msg) => (
-            <div key={msg.id} style={{ display: "flex", gap: "16px", maxWidth: msg.role === "user" ? "80%" : "88%", alignSelf: msg.role === "user" ? "flex-end" : "flex-start", flexDirection: msg.role === "user" ? "row-reverse" : "row", animation: "slideIn 0.3s ease-out" }}>
+            <div key={msg.id} style={{ 
+              display: "flex", 
+              gap: isMobile ? "8px" : "16px", 
+              maxWidth: msg.role === "user" ? (isMobile ? "92%" : "80%") : (isMobile ? "95%" : "88%"), 
+              alignSelf: msg.role === "user" ? "flex-end" : "flex-start", 
+              flexDirection: msg.role === "user" ? "row-reverse" : "row", 
+              animation: "slideIn 0.3s ease-out" 
+            }}>
               
               {/* Avatar */}
               {msg.role === "assistant" && (
@@ -896,7 +938,12 @@ export default function ChatPage() {
         </div>
 
         {/* Input Bar */}
-        <div style={{ padding: "24px", background: "rgba(15, 23, 42, 0.4)", borderTop: "1px solid rgba(255, 255, 255, 0.03)", flexShrink: 0 }}>
+        <div style={{ 
+          padding: isMobile ? "12px" : "24px", 
+          background: "rgba(15, 23, 42, 0.4)", 
+          borderTop: "1px solid rgba(255, 255, 255, 0.03)", 
+          flexShrink: 0 
+        }}>
           <div style={{ maxWidth: "800px", margin: "0 auto", position: "relative" }}>
             
             {/* Stop Generation Button */}
@@ -963,27 +1010,48 @@ export default function ChatPage() {
               </div>
             )}
 
-            <form onSubmit={handleSendMessage} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px 14px", borderRadius: "24px", background: "rgba(30, 41, 59, 0.7)", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 15px 50px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)", backdropFilter: "blur(24px)", transition: "all 0.3s ease" }}>
-              {/* Hidden: Image picker */}
-              <input type="file" ref={fileInputRef} accept="image/*" onChange={handleImageSelect} style={{ display: "none" }} />
-              <button type="button" onClick={() => fileInputRef.current?.click()} title="Attach image" style={{ padding: "10px", borderRadius: "14px", border: "none", background: "rgba(255,255,255,0.03)", cursor: "pointer", color: attachedImage ? "var(--primary-violet)" : "#94A3B8", transition: "all 0.2s" }} className="hover-icon">
-                <ImageIcon size={22} />
-              </button>
+            <form onSubmit={handleSendMessage} style={{ display: "flex", alignItems: "center", gap: isMobile ? "6px" : "12px", padding: "8px 10px", borderRadius: "24px", background: "rgba(30, 41, 59, 0.7)", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 15px 50px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)", backdropFilter: "blur(24px)", transition: "all 0.3s ease" }}>
+              {/* Media Picker Icons */}
+              <div style={{ display: "flex", gap: "4px" }}>
+                <input type="file" ref={fileInputRef} accept="image/*" onChange={handleImageSelect} style={{ display: "none" }} />
+                <button type="button" onClick={() => fileInputRef.current?.click()} style={{ padding: "8px", borderRadius: "12px", border: "none", background: "rgba(255,255,255,0.03)", cursor: "pointer", color: attachedImage ? "var(--primary-violet)" : "#94A3B8" }}>
+                  <ImageIcon size={isMobile ? 18 : 22} />
+                </button>
 
-              {/* Hidden: File / document picker */}
-              <input type="file" ref={fileDocRef} multiple accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.pptx,application/*,text/*" onChange={handleFileSelect} style={{ display: "none" }} />
-              <button type="button" onClick={() => fileDocRef.current?.click()} title="Attach files" style={{ padding: "10px", borderRadius: "14px", border: "none", background: attachedFiles.length > 0 ? "rgba(139, 92, 246, 0.15)" : "rgba(255,255,255,0.03)", cursor: "pointer", color: attachedFiles.length > 0 ? "var(--primary-violet)" : "#94A3B8", transition: "all 0.2s" }} className="hover-icon">
-                <Paperclip size={22} />
-              </button>
-              
-              <button type="button" onClick={toggleRecording} style={{ padding: "10px", borderRadius: "14px", border: "none", background: isRecording ? "rgba(239, 68, 68, 0.15)" : "rgba(255,255,255,0.03)", cursor: "pointer", color: isRecording ? "#ef4444" : "#94A3B8", transition: "all 0.2s" }} className={isRecording ? "pulse-red" : "hover-icon"}>
-                {isRecording ? <MicOff size={22} /> : <Mic size={22} />}
-              </button>
+                <input type="file" ref={fileDocRef} multiple accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.pptx,application/*,text/*" onChange={handleFileSelect} style={{ display: "none" }} />
+                <button type="button" onClick={() => fileDocRef.current?.click()} style={{ padding: "8px", borderRadius: "12px", border: "none", background: "rgba(255,255,255,0.03)", cursor: "pointer", color: attachedFiles.length > 0 ? "var(--primary-violet)" : "#94A3B8" }}>
+                  <Paperclip size={isMobile ? 18 : 22} />
+                </button>
+              </div>
 
-              <input value={input} onChange={(e) => setInput(e.target.value)} placeholder={isRecording ? "Maminaw ko..." : "Message LuminaAI or type a command..."} style={{ flex: 1, background: "transparent", border: "none", color: "white", padding: "12px 6px", outline: "none", fontSize: "15px", fontWeight: "400" }} />
+              <textarea 
+                id="chat-input"
+                value={input} 
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = e.target.scrollHeight + 'px';
+                }} 
+                placeholder={isRecording ? "Listening..." : (isMobile ? "Message..." : "Message LuminaAI...")} 
+                rows={1}
+                style={{ 
+                  flex: 1, 
+                  background: "transparent", 
+                  border: "none", 
+                  color: "white", 
+                  padding: "10px 4px", 
+                  outline: "none", 
+                  fontSize: "14px",
+                  resize: "none",
+                  maxHeight: "150px",
+                  fontFamily: "inherit",
+                  lineHeight: "1.5",
+                  overflowY: "auto"
+                }} 
+              />
               
-              <button type="submit" disabled={(!input.trim() && !attachedImage && attachedFiles.length === 0) || isLoading} style={{ width: "48px", height: "48px", borderRadius: "16px", background: "var(--gradient-primary)", border: "none", color: "white", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)", boxShadow: ((!input.trim() && !attachedImage && attachedFiles.length === 0) || isLoading) ? "none" : "0 8px 20px rgba(139, 92, 246, 0.4)", opacity: ((!input.trim() && !attachedImage && attachedFiles.length === 0) || isLoading) ? 0.5 : 1, transform: ((!input.trim() && !attachedImage && attachedFiles.length === 0) || isLoading) ? "scale(0.95)" : "scale(1)" }}>
-                {isLoading ? <Loader2 size={22} className="animate-spin" /> : <Send size={20} style={{ marginLeft: "2px" }} />}
+              <button type="submit" disabled={(!input.trim() && !attachedImage && attachedFiles.length === 0) || isLoading} style={{ width: isMobile ? "40px" : "48px", height: isMobile ? "40px" : "48px", borderRadius: "14px", background: "var(--gradient-primary)", border: "none", color: "white", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                {isLoading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
               </button>
             </form>
           </div>

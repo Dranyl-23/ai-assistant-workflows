@@ -50,7 +50,8 @@ dependencies:
   speech_to_text: ^7.3.0
   flutter_tts: ^4.2.2
   permission_handler: ^12.0.1
-  flutter_dotenv: ^5.1.0
+  # flutter_dotenv removed — secrets are now injected at build time via
+  # --dart-define flags. See mobile/lib/main.dart for documentation.
   font_awesome_flutter: ^11.0.0
   lottie: ^3.1.2
 
@@ -78,7 +79,8 @@ flutter:
   uses-material-design: true
 
   assets:
-    - .env
+    # .env removed — never bundle secrets in the app binary.
+    # Use --dart-define=KEY=VALUE at build time instead.
     - assets/
 
   # An image asset can refer to one or more resolution-specific "variants", see

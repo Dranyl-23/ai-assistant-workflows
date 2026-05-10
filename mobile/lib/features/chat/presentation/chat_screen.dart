@@ -151,6 +151,14 @@ class ChatScreen extends ConsumerWidget {
               Navigator.pop(context);
             }, color: const Color(0xFF8B5CF6)),
             const Divider(color: Colors.white10),
+            // Trigger a silent background refresh every time the drawer opens
+            // so the conversation list is always fresh without blocking the UI.
+            Builder(builder: (_) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                ref.read(chatProvider).refreshConversations();
+              });
+              return const SizedBox.shrink();
+            }),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
               child: TextField(
@@ -179,47 +187,75 @@ class ChatScreen extends ConsumerWidget {
               ),
             ),
             Expanded(
-              child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: ref.read(chatProvider).getConversations(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
-                  }
-                  
-                  final searchQuery = ref.watch(drawerSearchProvider);
-                  final allConversations = snapshot.data ?? [];
-                  final filteredConversations = allConversations.where((conv) {
-                    final title = (conv['title'] ?? 'New Conversation').toString().toLowerCase();
-                    return title.contains(searchQuery);
-                  }).toList();
+              // Fix #7 — No more FutureBuilder.
+              // chatState.conversations is a plain List maintained by ChatController.
+              // ListenableBuilder (wrapping this whole widget) re-renders the drawer
+              // automatically when refreshConversations() calls notifyListeners().
+              child: Builder(builder: (context) {
+                final chatState = ref.watch(
+                  // Watch the provider so this specific sub-tree rebuilds
+                  chatProvider.select((c) => c),
+                );
+                final searchQuery = ref.watch(drawerSearchProvider);
+                final allConversations = chatState.conversations;
+                final filteredConversations = allConversations.where((conv) {
+                  final title = (conv['title'] ?? 'New Conversation').toString().toLowerCase();
+                  return title.contains(searchQuery);
+                }).toList();
 
-                  if (filteredConversations.isEmpty) {
-                    return Center(child: Text(searchQuery.isEmpty ? 'No previous chats.' : 'No results found.', style: GoogleFonts.inter(color: Colors.white54, fontSize: 14)));
-                  }
-
-                  return ListView.builder(
-                    padding: EdgeInsets.zero,
-                    itemCount: filteredConversations.length,
-                    itemBuilder: (context, index) {
-                      final conv = filteredConversations[index];
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 24),
-                        leading: const Icon(LucideIcons.messageSquare, color: Colors.white70, size: 20),
-                        title: Text(
-                          conv['title'] ?? 'New Conversation',
-                          style: GoogleFonts.inter(color: Colors.white, fontSize: 14),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        onTap: () {
-                          Navigator.pop(context); // Close drawer
-                          ref.read(chatProvider).loadConversation(conv['id']);
-                        },
-                      );
-                    },
+                if (allConversations.isEmpty) {
+                  return const Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFF8B5CF6),
+                      ),
+                    ),
                   );
-                },
-              ),
+                }
+
+                if (filteredConversations.isEmpty) {
+                  return Center(
+                    child: Text(
+                      searchQuery.isEmpty ? 'No previous chats.' : 'No results found.',
+                      style: GoogleFonts.inter(color: Colors.white54, fontSize: 14),
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: EdgeInsets.zero,
+                  itemCount: filteredConversations.length,
+                  itemBuilder: (context, index) {
+                    final conv = filteredConversations[index];
+                    final isActive = conv['id'] == chatState.conversationId;
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                      leading: Icon(
+                        LucideIcons.messageSquare,
+                        color: isActive ? const Color(0xFF8B5CF6) : Colors.white70,
+                        size: 20,
+                      ),
+                      title: Text(
+                        conv['title'] ?? 'New Conversation',
+                        style: GoogleFonts.inter(
+                          color: isActive ? const Color(0xFF8B5CF6) : Colors.white,
+                          fontSize: 14,
+                          fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        ref.read(chatProvider).loadConversation(conv['id'] as String);
+                      },
+                    );
+                  },
+                );
+              }),
             ),
             const Divider(color: Colors.white10),
             _buildDrawerItem(LucideIcons.fileText, 'Document QA', () {

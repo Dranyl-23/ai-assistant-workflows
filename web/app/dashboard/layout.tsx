@@ -14,11 +14,21 @@ export default function DashboardLayout({
   const router = useRouter();
   const pathname = usePathname();
 
-  // Sidebar collapsed state lives here so the layout can react to it
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Chat page is full-height with no inner padding — layout gives it the full viewport
-  const isChat = pathname === "/dashboard/chat";
+  const isChat = pathname?.includes("/chat");
+
+  // Check for mobile screen size
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -47,18 +57,52 @@ export default function DashboardLayout({
   }
 
   return (
-    <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
-      <Sidebar collapsed={sidebarCollapsed} onToggle={setSidebarCollapsed} />
+    <div style={{ display: "flex", height: "100vh", overflow: "hidden", position: "relative" }}>
+      {/* Mobile Backdrop Overlay */}
+      {isMobile && mobileMenuOpen && (
+        <div 
+          onClick={() => setMobileMenuOpen(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 40, backdropFilter: "blur(4px)" }} 
+        />
+      )}
+
+      <Sidebar 
+        collapsed={isMobile ? false : sidebarCollapsed} 
+        onToggle={setSidebarCollapsed} 
+        isMobile={isMobile}
+        mobileOpen={mobileMenuOpen}
+        onMobileClose={() => setMobileMenuOpen(false)}
+      />
+
       <main style={{
         flex: 1,
-        // Dynamically tracks sidebar width (260px expanded, 72px collapsed)
-        marginLeft: sidebarCollapsed ? "72px" : "260px",
-        // Chat page owns its own full-height layout — no outer padding needed
-        padding: isChat ? "0" : "32px",
+        // No margin on mobile, dynamic margin on desktop
+        marginLeft: isMobile ? "0" : (sidebarCollapsed ? "72px" : "260px"),
+        padding: isChat ? "0" : (isMobile ? "16px" : "32px"),
+        paddingTop: isMobile && !isChat ? "72px" : (isChat ? "0" : "32px"),
         height: "100vh",
         overflowY: isChat ? "hidden" : "auto",
-        transition: "margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
       }}>
+        {/* Mobile Header Bar */}
+        {isMobile && (
+          <header style={{
+            position: "fixed", top: 0, left: 0, right: 0, height: "60px",
+            background: "rgba(2, 6, 23, 0.8)", backdropFilter: "blur(12px)",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+            display: "flex", alignItems: "center", padding: "0 16px", zIndex: 30
+          }}>
+            <button 
+              onClick={() => setMobileMenuOpen(true)}
+              style={{ background: "none", border: "none", color: "white", padding: "8px", cursor: "pointer" }}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+            </button>
+            <span style={{ marginLeft: "12px", fontWeight: "700", fontSize: "16px" }}>LuminaAI</span>
+          </header>
+        )}
         {children}
       </main>
     </div>

@@ -29,6 +29,17 @@ export default function DashboardPage() {
     memories: 0
   });
   const [loading, setLoading] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Check for mobile screen size
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5000/api";
 
@@ -109,7 +120,7 @@ export default function DashboardPage() {
       
       {/* Welcome Banner */}
       <div className="glass-card" style={{ 
-        padding: "48px", 
+        padding: isMobile ? "32px 24px" : "48px", 
         marginBottom: "40px", 
         background: "linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(15, 23, 42, 0.4) 100%)",
         border: "1px solid rgba(139, 92, 246, 0.2)",
@@ -125,7 +136,7 @@ export default function DashboardPage() {
             borderRadius: "20px", 
             background: "rgba(16, 185, 129, 0.1)", 
             color: "#10b981",
-            fontSize: "12px",
+            fontSize: "11px",
             fontWeight: "700",
             marginBottom: "16px",
             border: "1px solid rgba(16, 185, 129, 0.2)"
@@ -133,10 +144,10 @@ export default function DashboardPage() {
             <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10b981", animation: "pulse-green 2s infinite" }} />
             SYSTEM OPERATIONAL
           </div>
-          <h1 style={{ fontSize: "42px", fontWeight: "800", marginBottom: "12px", letterSpacing: "-0.02em" }}>
+          <h1 style={{ fontSize: isMobile ? "28px" : "42px", fontWeight: "800", marginBottom: "12px", letterSpacing: "-0.02em" }}>
             Welcome back, <span className="gradient-text">{user?.user_metadata?.full_name?.split(" ")[0] || "User"}</span>! 
           </h1>
-          <p style={{ color: "var(--text-muted)", fontSize: "18px", maxWidth: "600px", lineHeight: "1.6" }}>
+          <p style={{ color: "var(--text-muted)", fontSize: isMobile ? "15px" : "18px", maxWidth: "600px", lineHeight: "1.6" }}>
             Your personal AI Assistant is ready to help with your workflows today.
           </p>
         </div>
@@ -155,9 +166,14 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats Row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "24px", marginBottom: "48px" }}>
+      <div style={{ 
+        display: "grid", 
+        gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", 
+        gap: isMobile ? "16px" : "24px", 
+        marginBottom: "48px" 
+      }}>
         {cards.map((card, i) => (
-          <div key={i} className="glass-card stat-card" style={{ padding: "32px", transition: "all 0.3s ease" }}>
+          <div key={i} className="glass-card stat-card" style={{ padding: isMobile ? "24px" : "32px", transition: "all 0.3s ease" }}>
             <div style={{ 
               width: "48px", 
               height: "48px", 
@@ -171,21 +187,25 @@ export default function DashboardPage() {
             }}>
               {card.icon}
             </div>
-            <p style={{ fontSize: "14px", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em" }}>{card.label}</p>
+            <p style={{ fontSize: "13px", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.05em" }}>{card.label}</p>
             <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
-              <h3 style={{ fontSize: "36px", fontWeight: "800" }}>{loading ? "..." : card.value}</h3>
-              <span style={{ fontSize: "12px", color: "#10b981", fontWeight: "700", display: "flex", alignItems: "center", gap: "4px" }}>
-                <TrendingUp size={12} /> Live
+              <h3 style={{ fontSize: isMobile ? "28px" : "36px", fontWeight: "800" }}>{loading ? "..." : card.value}</h3>
+              <span style={{ fontSize: "11px", color: "#10b981", fontWeight: "700", display: "flex", alignItems: "center", gap: "4px" }}>
+                <TrendingUp size={11} /> Live
               </span>
             </div>
           </div>
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: "32px" }}>
+      <div style={{ 
+        display: "flex", 
+        flexDirection: isMobile ? "column" : "row", 
+        gap: "32px" 
+      }}>
         
         {/* Quick Actions Column */}
-        <div>
+        <div style={{ flex: 1.6 }}>
           <h2 style={{ fontSize: "20px", fontWeight: "800", marginBottom: "20px", display: "flex", alignItems: "center", gap: "12px" }}>
              <Zap size={20} color="var(--primary-violet)" /> Command Center
           </h2>
@@ -199,7 +219,7 @@ export default function DashboardPage() {
                   padding: "24px",
                   display: "flex",
                   alignItems: "center",
-                  gap: "20px",
+                  gap: isMobile ? "16px" : "20px",
                   textAlign: "left",
                   cursor: "pointer",
                   transition: "all 0.2s",
@@ -232,14 +252,14 @@ export default function DashboardPage() {
                   <h4 style={{ fontSize: "16px", fontWeight: "700", color: "white" }}>{action.title}</h4>
                   <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>{action.desc}</p>
                 </div>
-                <ArrowRight size={18} color="var(--text-muted)" />
+                {!isMobile && <ArrowRight size={18} color="var(--text-muted)" />}
               </button>
             ))}
           </div>
         </div>
 
         {/* AI Insight Sidebar */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "24px" }}>
           <h2 style={{ fontSize: "20px", fontWeight: "800", marginBottom: "20px", display: "flex", alignItems: "center", gap: "12px" }}>
              <Sparkles size={20} color="#38bdf8" /> Smart Insights
           </h2>

@@ -15,6 +15,54 @@ const router = express.Router();
 router.use(requireAuth);
 
 /**
+ * GET /chat/usage
+ * Returns the total number of user messages sent by the authenticated user.
+ * Used by clients (especially mobile) to sync the real server-side usage count
+ * on app startup, so local counters can't be bypassed by restarting the app.
+ */
+router.get("/usage", async (req, res) => {
+  try {
+    // Fetch all conversation IDs that belong to this user
+    const { data: convs, error: convErr } = await supabaseAdmin
+      .from("conversations")
+      .select("id")
+      .eq("user_id", req.user.id);
+
+    if (convErr) throw convErr;
+
+    if (!convs || convs.length === 0) {
+      return res.json({ messageCount: 0, limit: 50, plan: "free" });
+    }
+
+    const convIds = convs.map((c) => c.id);
+
+    // Count total user-role messages across all those conversations
+    const { count, error: countErr } = await supabaseAdmin
+      .from("messages")
+      .select("id", { count: "exact", head: true })
+      .eq("role", "user")
+      .in("conversation_id", convIds);
+
+    if (countErr) throw countErr;
+
+    // Fetch plan for the response
+    const { data: profile } = await supabaseAdmin
+      .from("profiles")
+      .select("plan")
+      .eq("id", req.user.id)
+      .single();
+
+    const plan = profile?.plan || "free";
+    const limit = plan === "free" ? 50 : null; // null = unlimited
+
+    res.json({ messageCount: count ?? 0, limit, plan });
+  } catch (err) {
+    console.error("[Chat] GET /usage error:", err.message);
+    res.status(500).json({ error: "Failed to fetch usage count" });
+  }
+});
+
+/**
  * GET /chat/conversations
  * Get all conversations for the current user
  */

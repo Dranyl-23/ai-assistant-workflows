@@ -1,17 +1,34 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+// ── App Config ────────────────────────────────────────────────────────────────
+// Backend URL is injected at build time via --dart-define=BACKEND_URL=...
+// Falls back to the Android emulator localhost alias in debug mode.
+const _backendUrl = String.fromEnvironment(
+  'BACKEND_URL',
+  defaultValue: kDebugMode ? 'http://10.0.2.2:5000' : '',
+);
+
+String get backendUrl {
+  if (_backendUrl.isNotEmpty) return _backendUrl;
+  // Final fallback (should not reach in production)
+  return 'http://10.0.2.2:5000';
+}
+
+// ── Provider ──────────────────────────────────────────────────────────────────
 
 final chatProvider = Provider<ChatController>((ref) {
   final controller = ChatController();
@@ -19,42 +36,60 @@ final chatProvider = Provider<ChatController>((ref) {
   return controller;
 });
 
+// ── Controller ────────────────────────────────────────────────────────────────
+
 class ChatController extends ChangeNotifier {
   IO.Socket? _socket;
   late Box _chatBox;
-  
+
   late stt.SpeechToText _speech;
   late FlutterTts _tts;
-  
+
   bool isListening = false;
   XFile? selectedImage;
-  
+
   List<Map<String, dynamic>> messages = [];
+  /// Reactive list of all user conversations — updated on init and on every
+  /// background refresh. The drawer reads this directly instead of using a
+  /// FutureBuilder, eliminating the rebuild loop.
+  List<Map<String, dynamic>> conversations = [];
   bool isTyping = false;
-  String streamingContent = "";
+  String streamingContent = '';
+  /// Real server-side message count. Fetched on init and persisted in
+  /// SharedPreferences so it survives app restarts (not bypassable).
   int messageCount = 0;
+  /// null = unlimited (Pro/Enterprise plan)
+  int? messageLimit = 50;
+  String userPlan = 'free';
+
   String? conversationId;
   bool isConnected = false;
   bool isUploading = false;
   String? errorMessage;
-  
+
   final TextEditingController messageController = TextEditingController();
   final ScrollController scrollController = ScrollController();
+
+  // Prefs key for the persisted count
+  static const _kMessageCount = 'server_message_count';
+  static const _kMessageLimit = 'server_message_limit';
+  static const _kUserPlan    = 'server_user_plan';
 
   ChatController() {
     _initVoice();
     _initChat();
   }
 
+  // ── Initialisation ──────────────────────────────────────────────────────────
+
   Future<void> _initChat() async {
     _chatBox = Hive.box('chat_history');
-    
-    // Check if user changed
+
+    // If the user changed accounts, wipe local history
     final currentUser = Supabase.instance.client.auth.currentUser;
-    final lastUserId = _chatBox.get('last_user_id');
+    final lastUserId = _chatBox.get('last_user_id') as String?;
 
     if (currentUser != null && lastUserId != currentUser.id) {
-      // User changed! Clear local history
       await _chatBox.put('messages', []);
       await _chatBox.delete('conversationId');
       await _chatBox.put('last_user_id', currentUser.id);
@@ -62,21 +97,265 @@ class ChatController extends ChangeNotifier {
 
     _loadHistory();
     _initSocket();
+
+    // Restore persisted usage count immediately so the UI is consistent
+    // even before the network call completes.
+    await _restoreUsageFromPrefs();
+
+    // Then refresh from the server in the background (authoritative count)
+    _syncUsageFromServer();
   }
 
   void _initVoice() async {
     _speech = stt.SpeechToText();
     _tts = FlutterTts();
-    await _tts.setLanguage("en-US");
+    await _tts.setLanguage('en-US');
     await _tts.setSpeechRate(0.5);
   }
+
+  // ── Usage / Limit Management ────────────────────────────────────────────────
+
+  /// Restores the last known usage count from SharedPreferences.
+  /// Called before the network request so the UI doesn't flash "0 messages".
+  Future<void> _restoreUsageFromPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    messageCount = prefs.getInt(_kMessageCount) ?? 0;
+    messageLimit = prefs.getInt(_kMessageLimit) ?? 50;
+    userPlan     = prefs.getString(_kUserPlan) ?? 'free';
+    notifyListeners();
+  }
+
+  /// Fetches the authoritative message count from the backend's
+  /// GET /api/chat/usage endpoint. This is the server-enforced count —
+  /// it cannot be bypassed by restarting the app.
+  Future<void> _syncUsageFromServer() async {
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) return;
+
+    try {
+      final response = await http.get(
+        Uri.parse('$backendUrl/api/chat/usage'),
+        headers: {'Authorization': 'Bearer ${session.accessToken}'},
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+
+        messageCount = (body['messageCount'] as num?)?.toInt() ?? messageCount;
+        userPlan     = (body['plan'] as String?) ?? userPlan;
+        // `limit` is null for pro/enterprise (unlimited)
+        messageLimit = body['limit'] == null ? null : (body['limit'] as num).toInt();
+
+        // Persist for next cold start
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt(_kMessageCount, messageCount);
+        if (messageLimit != null) await prefs.setInt(_kMessageLimit, messageLimit!);
+        await prefs.setString(_kUserPlan, userPlan);
+
+        if (kDebugMode) {
+          debugPrint('[ChatProvider] Usage synced: $messageCount / ${messageLimit ?? "∞"} ($userPlan)');
+        }
+
+        notifyListeners();
+      }
+    } catch (e) {
+      // Non-fatal: we already have the persisted count from prefs.
+      if (kDebugMode) debugPrint('[ChatProvider] Usage sync failed: $e');
+    }
+  }
+
+  /// Returns true if the user has NOT hit their message limit.
+  bool get canSendMessage =>
+      messageLimit == null || messageCount < messageLimit!;
+
+  // ── History ─────────────────────────────────────────────────────────────────
+
+  void _loadHistory() {
+    _chatBox = Hive.box('chat_history');
+
+    // Restore messages
+    final history = _chatBox.get('messages', defaultValue: []);
+    messages = List<Map<String, dynamic>>.from(
+      (history as List).map((m) => Map<String, dynamic>.from(m as Map)),
+    );
+    conversationId = _chatBox.get('conversationId') as String?;
+
+    if (messages.isEmpty) {
+      messages.add({
+        'role': 'assistant',
+        'content': 'Hello! I am LuminaAI, your intelligent assistant. How can I help you today?',
+      });
+    }
+
+    // Restore cached conversations list for immediate drawer display
+    final cached = _chatBox.get('conversations_list', defaultValue: []);
+    try {
+      if (cached is List && cached.isNotEmpty) {
+        conversations = cached.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[ChatProvider] Hive conversations cache error: $e');
+    }
+
+    notifyListeners();
+    scrollToBottom();
+  }
+
+  void _saveHistory() {
+    _chatBox.put('messages', messages);
+    if (conversationId != null) {
+      _chatBox.put('conversationId', conversationId);
+    } else {
+      _chatBox.delete('conversationId');
+    }
+  }
+
+  void clearHistory() {
+    messages = [
+      {'role': 'assistant', 'content': 'History cleared. How can I help you today?'},
+    ];
+    conversationId = null;
+    notifyListeners();
+    _saveHistory();
+  }
+
+  // ── Conversations ───────────────────────────────────────────────────────────
+
+  /// Trigger a background refresh of the conversations list from Supabase.
+  /// The result updates `this.conversations` and notifies listeners — the
+  /// drawer will re-render automatically via ListenableBuilder.
+  /// This replaces the old FutureBuilder pattern which caused rebuild loops.
+  void refreshConversations() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+    _fetchConversationsFromServer(user.id);
+  }
+
+  /// Kept for backward compatibility (e.g. drawer onTap triggers).
+  /// Now returns the in-memory list synchronously — no network call.
+  Future<List<Map<String, dynamic>>> getConversations() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return [];
+    // If the list is empty (first cold start), trigger a fetch
+    if (conversations.isEmpty) {
+      _fetchConversationsFromServer(user.id);
+    }
+    return conversations;
+  }
+
+  Future<void> _fetchConversationsFromServer(String userId) async {
+    try {
+      final data = await Supabase.instance.client
+          .from('conversations')
+          .select('id, title, created_at, updated_at')
+          .eq('user_id', userId)
+          .order('updated_at', ascending: false);
+
+      final freshConvs = List<Map<String, dynamic>>.from(data as List);
+
+      // Update in-memory list (reactive — drawer re-renders immediately)
+      conversations = freshConvs;
+
+      // Persist to Hive for next cold start
+      await _chatBox.put('conversations_list', freshConvs);
+
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) debugPrint('[ChatProvider] Fetch conversations error: $e');
+    }
+  }
+
+  Future<void> loadConversation(String id) async {
+    try {
+      final data = await Supabase.instance.client
+          .from('messages')
+          .select()
+          .eq('conversation_id', id)
+          .order('created_at', ascending: true);
+
+      messages = (data as List).map((msg) => {
+        'role': msg['role'] as String,
+        'content': msg['content'] as String,
+      }).toList();
+
+      conversationId = id;
+      _saveHistory();
+      notifyListeners();
+      scrollToBottom();
+    } catch (e) {
+      errorMessage = 'Failed to load conversation: $e';
+      notifyListeners();
+    }
+  }
+
+  // ── Image / File ─────────────────────────────────────────────────────────────
+
+  void setImage(XFile? image) {
+    selectedImage = image;
+    notifyListeners();
+  }
+
+  void clearError() {
+    if (errorMessage != null) {
+      errorMessage = null;
+      notifyListeners();
+    }
+  }
+
+  Future<void> uploadFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'txt', 'md'],
+      );
+
+      if (result == null || result.files.single.path == null) return;
+
+      final file = File(result.files.single.path!);
+      isUploading = true;
+      notifyListeners();
+
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session == null) throw Exception('Not logged in');
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$backendUrl/api/documents/upload'),
+      );
+      request.headers['Authorization'] = 'Bearer ${session.accessToken}';
+      request.files.add(await http.MultipartFile.fromPath('file', file.path));
+
+      final response = await request.send().timeout(const Duration(seconds: 60));
+
+      if (response.statusCode == 201) {
+        messages.add({
+          'role': 'assistant',
+          'content':
+              '✅ Document **${result.files.single.name}** uploaded successfully! '
+              'I have read it and you can now ask me questions about it.',
+        });
+      } else {
+        errorMessage = 'Failed to upload document. Status: ${response.statusCode}';
+      }
+    } catch (e) {
+      errorMessage = 'Error uploading file: $e';
+    } finally {
+      isUploading = false;
+      notifyListeners();
+      _saveHistory();
+      scrollToBottom();
+    }
+  }
+
+  // ── Voice ────────────────────────────────────────────────────────────────────
 
   Future<void> speak(String text) async {
     await _tts.speak(text);
   }
 
   void listen() async {
-    var status = await Permission.microphone.request();
+    final status = await Permission.microphone.request();
+
     if (status.isPermanentlyDenied) {
       errorMessage = 'Microphone permission permanently denied. Please enable it in Settings.';
       notifyListeners();
@@ -84,15 +363,19 @@ class ChatController extends ChangeNotifier {
       return;
     }
     if (status != PermissionStatus.granted) {
-      errorMessage = 'Microphone permission required';
+      errorMessage = 'Microphone permission required.';
       notifyListeners();
       return;
     }
 
     if (!isListening) {
-      bool available = await _speech.initialize(
-        onStatus: (val) => print('onStatus: $val'),
-        onError: (val) => print('onError: $val'),
+      final available = await _speech.initialize(
+        onStatus: (val) {
+          if (kDebugMode) debugPrint('[Speech] Status: $val');
+        },
+        onError: (val) {
+          if (kDebugMode) debugPrint('[Speech] Error: $val');
+        },
       );
       if (available) {
         isListening = true;
@@ -114,173 +397,28 @@ class ChatController extends ChangeNotifier {
     }
   }
 
-  void _loadHistory() {
-    _chatBox = Hive.box('chat_history');
-    final history = _chatBox.get('messages', defaultValue: []);
-    messages = List<Map<String, dynamic>>.from(
-      history.map((m) => Map<String, dynamic>.from(m))
-    );
-    
-    // Load persisted conversationId so we resume the same backend thread
-    conversationId = _chatBox.get('conversationId');
-    
-    if (messages.isEmpty) {
-      messages.add({'role': 'assistant', 'content': 'Hello! I am LuminaAI, your intelligent assistant. How can I help you today?'});
-    }
-    notifyListeners();
-    scrollToBottom();
-  }
-
-  void _saveHistory() {
-    _chatBox.put('messages', messages);
-    if (conversationId != null) {
-      _chatBox.put('conversationId', conversationId);
-    } else {
-      _chatBox.delete('conversationId');
-    }
-  }
-
-  void clearHistory() {
-    messages = [
-      {'role': 'assistant', 'content': 'History cleared. How can I help you today?'}
-    ];
-    conversationId = null; // Clear so the backend generates a new thread next time
-    notifyListeners();
-    _saveHistory();
-  }
-
-  Future<List<Map<String, dynamic>>> getConversations() async {
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user == null) {
-      print('[ChatProvider] No user found during getConversations');
-      return [];
-    }
-    
-    // 1. Return cached conversations first for immediate UI update
-    final cached = _chatBox.get('conversations_list', defaultValue: []);
-    List<Map<String, dynamic>> convs = [];
-    try {
-      if (cached is List) {
-        convs = cached.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-      }
-    } catch (e) {
-      print('[ChatProvider] Hive cache error: $e');
-    }
-
-    try {
-      print('[ChatProvider] Fetching conversations for user: ${user.id}');
-      // 2. Fetch fresh data from Supabase
-      final data = await Supabase.instance.client
-          .from('conversations')
-          .select()
-          .eq('user_id', user.id)
-          .order('updated_at', ascending: false);
-      
-      final freshConvs = List<Map<String, dynamic>>.from(data);
-      print('[ChatProvider] Successfully fetched ${freshConvs.length} conversations');
-      
-      // 3. Update cache if data changed
-      await _chatBox.put('conversations_list', freshConvs);
-      return freshConvs;
-    } catch (e) {
-      print('[ChatProvider] Fetch error: $e');
-      return convs; // Fallback to cache if offline/error
-    }
-  }
-
-  Future<void> loadConversation(String id) async {
-    try {
-      final data = await Supabase.instance.client
-          .from('messages')
-          .select()
-          .eq('conversation_id', id)
-          .order('created_at', ascending: true);
-      
-      messages = [];
-      for (var msg in data) {
-        messages.add({
-          'role': msg['role'],
-          'content': msg['content']
-        });
-      }
-      conversationId = id;
-      _saveHistory();
-      notifyListeners();
-      scrollToBottom();
-    } catch (e) {
-      errorMessage = 'Failed to load conversation: $e';
-      notifyListeners();
-    }
-  }
-
-  void setImage(XFile? image) {
-    selectedImage = image;
-    notifyListeners();
-  }
-
-  void clearError() {
-    if (errorMessage != null) {
-      errorMessage = null;
-      notifyListeners();
-    }
-  }
-
-  Future<void> uploadFile() async {
-    try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'txt', 'md'],
-      );
-
-      if (result != null && result.files.single.path != null) {
-        File file = File(result.files.single.path!);
-        
-        isUploading = true;
-        notifyListeners();
-
-        final session = Supabase.instance.client.auth.currentSession;
-        if (session == null) throw Exception("Not logged in");
-
-        final backendUrl = dotenv.env['BACKEND_URL'] ?? const String.fromEnvironment('BACKEND_URL', defaultValue: 'http://10.0.2.2:5000');
-        
-        var request = http.MultipartRequest('POST', Uri.parse('$backendUrl/api/documents/upload'));
-        request.headers['Authorization'] = 'Bearer ${session.accessToken}';
-        request.files.add(await http.MultipartFile.fromPath('file', file.path));
-
-        var response = await request.send();
-
-        if (response.statusCode == 201) {
-          messages.add({
-            'role': 'assistant',
-            'content': '✅ Document **${result.files.single.name}** uploaded successfully! I have read it and you can now ask me questions about it.'
-          });
-        } else {
-          errorMessage = 'Failed to upload document. Status: ${response.statusCode}';
-        }
-      }
-    } catch (e) {
-      errorMessage = 'Error uploading file: $e';
-    } finally {
-      isUploading = false;
-      notifyListeners();
-      _saveHistory();
-      scrollToBottom();
-    }
-  }
+  // ── Socket.IO ────────────────────────────────────────────────────────────────
 
   void _initSocket() {
-    final backendUrl = dotenv.env['BACKEND_URL'] ?? const String.fromEnvironment('BACKEND_URL', defaultValue: 'http://10.0.2.2:5000');
-    
-    _socket = IO.io(backendUrl, IO.OptionBuilder()
-      .setTransports(['websocket'])
-      .disableAutoConnect()
-      .build());
+    _socket = IO.io(
+      backendUrl,
+      IO.OptionBuilder()
+          .setTransports(['websocket'])
+          .disableAutoConnect()
+          .setReconnectionAttempts(5)
+          .setReconnectionDelay(1000)       // start at 1s
+          .setReconnectionDelayMax(10000)   // cap at 10s
+          .setRandomizationFactor(0.5)
+          .build(),
+    );
 
     _socket!.connect();
 
+    // Authenticate on connect (and on every reconnect)
     _socket!.onConnect((_) {
       isConnected = true;
       notifyListeners();
+
       final session = Supabase.instance.client.auth.currentSession;
       if (session != null) {
         _socket!.emit('authenticate', session.accessToken);
@@ -293,54 +431,73 @@ class ChatController extends ChangeNotifier {
     });
 
     _socket!.on('conversation_created', (data) {
-      conversationId = data['id'];
-      _saveHistory(); // Save immediately to local storage
+      conversationId = data['id'] as String?;
+      _saveHistory();
       notifyListeners();
     });
 
     _socket!.on('stream_chunk', (data) {
       isTyping = true;
-      streamingContent += data['chunk'];
+      streamingContent += (data['chunk'] as String? ?? '');
       notifyListeners();
       scrollToBottom();
     });
 
     _socket!.on('stream_end', (data) {
+      final textToSpeak = streamingContent;
       messages.add({
         'role': 'assistant',
         'content': streamingContent,
       });
-      streamingContent = "";
+      streamingContent = '';
       isTyping = false;
       notifyListeners();
       _saveHistory();
       scrollToBottom();
+
+      // Auto-speak the AI's response using native TTS
+      if (textToSpeak.isNotEmpty) {
+        // Remove [tags] and markdown characters so the voice sounds natural
+        final cleanText = textToSpeak
+            .replaceAll(RegExp(r'\[.*?\]'), '')
+            .replaceAll(RegExp(r'[*_`#]'), '')
+            .trim();
+        if (cleanText.isNotEmpty) speak(cleanText);
+      }
     });
 
     _socket!.on('chat_error', (data) {
-      errorMessage = data['error'];
+      final err = data['error'] as String? ?? 'Unknown error';
+      if (err == 'Usage limit reached') {
+        // Re-sync from server so the local count is accurate
+        _syncUsageFromServer();
+      }
+      errorMessage = data['message'] as String? ?? err;
       isTyping = false;
       notifyListeners();
     });
   }
 
+  // ── Send ─────────────────────────────────────────────────────────────────────
+
   void sendMessage({VoidCallback? onLimitReached}) async {
-    if (messageCount >= 50) {
-      if (onLimitReached != null) onLimitReached();
+    // Use server-authoritative limit check
+    if (!canSendMessage) {
+      onLimitReached?.call();
       return;
     }
 
     final text = messageController.text.trim();
     if (text.isEmpty && selectedImage == null) return;
-    
-    final user = Supabase.instance.client.auth.currentUser;
-    String? base64Image;
 
+    String? base64Image;
     if (selectedImage != null) {
       final bytes = await File(selectedImage!.path).readAsBytes();
       base64Image = base64Encode(bytes);
     }
-    
+
+    final user = Supabase.instance.client.auth.currentUser;
+
     _socket?.emit('chat_message', {
       'message': text,
       'userId': user?.id,
@@ -352,19 +509,29 @@ class ChatController extends ChangeNotifier {
       messages.add({'role': 'user', 'content': text});
     }
     if (selectedImage != null) {
-      messages.add({'role': 'user', 'content': '[Image Attached]', 'imagePath': selectedImage!.path});
+      messages.add({
+        'role': 'user',
+        'content': '[Image Attached]',
+        'imagePath': selectedImage!.path,
+      });
     }
-    
+
     messageController.clear();
     selectedImage = null;
     isTyping = true;
-    streamingContent = "";
+    streamingContent = '';
+
+    // Optimistically increment the local counter immediately.
+    // The background _syncUsageFromServer() call (triggered on stream_end
+    // or chat_error) will correct it with the real value from the server.
     messageCount++;
+
     notifyListeners();
-    
     _saveHistory();
     scrollToBottom();
   }
+
+  // ── Scroll ───────────────────────────────────────────────────────────────────
 
   void scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -377,6 +544,8 @@ class ChatController extends ChangeNotifier {
       }
     });
   }
+
+  // ── Dispose ──────────────────────────────────────────────────────────────────
 
   @override
   void dispose() {

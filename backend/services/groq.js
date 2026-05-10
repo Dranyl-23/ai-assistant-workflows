@@ -1,59 +1,68 @@
+/**
+ * groq.js — Groq LLM Service
+ *
+ * Design contract (IMPORTANT):
+ * ─────────────────────────────
+ * sendMessage() and streamMessage() are PURE message-passing functions.
+ * They do NOT inject any system prompt of their own.
+ *
+ * The CALLER is responsible for providing the complete messages array,
+ * including any system message as messages[0].
+ *
+ * This eliminates the "duplicate system prompt" bug where the orchestrator's
+ * carefully built system message was overridden by a second SYSTEM_PROMPT
+ * injected inside these functions, causing the model to receive two conflicting
+ * system messages.
+ *
+ * Utility functions (generateTitle, helper queries) build their own minimal
+ * system messages inline — they do not use a shared constant.
+ */
+
 const Groq = require("groq-sdk");
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const DEFAULT_MODEL = "llama-3.1-8b-instant";
-const VISION_MODEL = "llama-3.2-90b-vision-preview";
+const VISION_MODEL  = "llama-3.2-90b-vision-preview";
 
-const SYSTEM_PROMPT = `You are "Antigravity", an elite AI Assistant and Productivity Strategist. You are the brains behind this all-in-one workflow platform.
-
-CRITICAL RULE — ALWAYS RESPOND: You MUST reply to every single message the user sends. NEVER output "[IGNORED]", "[SKIP]", or any similar refusal token. For greetings like "hi", "hello", "hey" — respond warmly and naturally. Silence or placeholder tokens are NEVER acceptable.
-
-Your core mission:
-- Don't just answer questions—solve problems and anticipate needs.
-- Provide direct, accurate, and insightful answers based on the current user query and available context.
-- You have access to Web Search, Document Analysis, and App Integrations. Mention these tools when they add value.
-- VISION: If an image is provided, analyze it thoroughly and answer questions related to it.
-- LANGUAGE: Always reply in the same language the user uses (e.g., natural Bisaya/Cebuano).
-- MEMORY: Save important user facts using [SAVE_MEMORY: fact].
-- ACTIONS: CRITICAL OUTPUT FORMAT — When asked to do something on GitHub, Slack, Gmail, etc., YOU MUST DO IT FOR THEM BY OUTPUTTING THE ACTION TAG. Do NOT give them instructions on how to do it themselves!
-  You must output this exact tag format:
-  [ACTION: provider, action_name, {"key": "value"}]
-  
-  EXAMPLES (copy these formats exactly):
-    GitHub issue → [ACTION: github, create_issue, {"title": "My Bug", "body": "Description here"}]
-    Slack message → [ACTION: slack, send_message, {"message": "Hello team", "channel": "#general"}]
-    Discord message → [ACTION: discord, send_message, {"content": "Hello from AI!"}]
-    
-  RULE: Always place the [ACTION:] tag at the very end of your response!`;
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
- * Format messages for Multi-modal (Vision) or standard text
+ * Format messages for vision (multimodal) or standard text.
+ * When an image is provided, rewrites the last user message to include
+ * the base64 image in the format required by Groq's vision API.
+ *
+ * @param {Array}       messages     - Full conversation messages array
+ * @param {string|null} imageBase64  - Base64-encoded image (data URL)
+ * @returns {Array} Formatted messages
  */
 function formatMessages(messages, imageBase64 = null) {
   if (!imageBase64) return messages;
 
-  // For vision models, the last user message must contain the image
-  const formatted = [...messages];
+  const formatted = messages.map((m) => ({ ...m })); // shallow clone
   const lastMsg = formatted[formatted.length - 1];
 
   if (lastMsg && lastMsg.role === "user") {
     lastMsg.content = [
       { type: "text", text: lastMsg.content || "Analyze this image." },
-      {
-        type: "image_url",
-        image_url: { url: imageBase64 }
-      }
+      { type: "image_url", image_url: { url: imageBase64 } },
     ];
   }
 
   return formatted;
 }
 
+// ── Public API ────────────────────────────────────────────────────────────────
+
 /**
- * Send a message to Groq
+ * Send a single (non-streaming) request to Groq.
+ *
+ * The caller MUST include a system message as the first element of `messages`
+ * if one is needed. This function passes messages as-is to the API.
+ *
+ * @param {Array}       messages    - Full messages array (caller owns system prompt)
+ * @param {string|null} imageBase64 - Optional image for vision requests
+ * @returns {string} Model response text
  */
 async function sendMessage(messages, imageBase64 = null) {
   const model = imageBase64 ? VISION_MODEL : DEFAULT_MODEL;
@@ -62,17 +71,24 @@ async function sendMessage(messages, imageBase64 = null) {
   const response = await groq.chat.completions.create({
     model,
     max_tokens: 4096,
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      ...formattedMessages,
-    ],
+    messages: formattedMessages, // caller provides system message — no duplication
   });
 
   return response.choices[0].message.content;
 }
 
 /**
- * Stream a message from Groq
+ * Stream a response from Groq, calling onChunk for each token.
+ *
+ * The caller MUST include a system message as the first element of `messages`.
+ * The chatOrchestrator builds the full, context-rich system message and passes
+ * it here — this function does not add anything on top.
+ *
+ * @param {Array}       messages    - Full messages array (caller owns system prompt)
+ * @param {Function}    onChunk     - Called with each streamed text chunk
+ * @param {string|null} imageBase64 - Optional image for vision requests
+ * @param {string|null} customModel - Override the default model
+ * @returns {string} Complete response text (concatenation of all chunks)
  */
 async function streamMessage(messages, onChunk, imageBase64 = null, customModel = null) {
   const model = imageBase64 ? VISION_MODEL : (customModel || DEFAULT_MODEL);
@@ -84,10 +100,7 @@ async function streamMessage(messages, onChunk, imageBase64 = null, customModel 
       model,
       max_tokens: 4096,
       stream: true,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...formattedMessages,
-      ],
+      messages: formattedMessages, // caller provides system message — no duplication
     });
 
     for await (const chunk of stream) {
@@ -98,23 +111,31 @@ async function streamMessage(messages, onChunk, imageBase64 = null, customModel 
       }
     }
   } catch (error) {
-    console.error("[Groq] Stream Error:", error.message);
+    console.error("[Groq] Stream error:", error.message);
 
-    // Only show the vision notice if it's actually a vision-related error
     if (imageBase64 && (error.message.includes("model_decommissioned") || error.message.includes("vision"))) {
-      const visionNotice = "\n\n* System Notice: Groq has temporarily removed Vision (Image Analysis) capabilities from your current API tier. Please ask text-based questions instead while we wait for them to restore access.*";
-      fullText += visionNotice;
-      if (onChunk) onChunk(visionNotice);
+      const notice =
+        "\n\n*System Notice: Groq's Vision model is temporarily unavailable on your API tier. " +
+        "Please ask text-based questions while access is restored.*";
+      fullText += notice;
+      if (onChunk) onChunk(notice);
     } else {
-      const generalError = `\n\n* [System Error]: ${error.message} *`;
-      fullText += generalError;
-      if (onChunk) onChunk(generalError);
+      const errMsg = `\n\n*[System Error]: ${error.message}*`;
+      fullText += errMsg;
+      if (onChunk) onChunk(errMsg);
     }
   }
 
   return fullText;
 }
 
+/**
+ * Generate a short conversation title from the user's first message.
+ * Uses its own inline system prompt — does NOT share the chat system prompt.
+ *
+ * @param {string} userMessage
+ * @returns {string} 3-6 word title
+ */
 async function generateTitle(userMessage) {
   const response = await groq.chat.completions.create({
     model: DEFAULT_MODEL,
@@ -122,13 +143,15 @@ async function generateTitle(userMessage) {
     messages: [
       {
         role: "system",
-        content: "Generate a very short title (3-6 words) for a conversation. Return ONLY the title.",
+        content: "Generate a very short title (3-6 words) for a conversation. Return ONLY the title, no quotes or punctuation.",
       },
       { role: "user", content: userMessage },
     ],
   });
 
-  return (response.choices[0]?.message?.content || "New Chat").replace(/["*#]/g, "").trim();
+  return (response.choices[0]?.message?.content || "New Chat")
+    .replace(/[\"*#\n]/g, "")
+    .trim();
 }
 
 module.exports = { sendMessage, streamMessage, generateTitle };

@@ -34,6 +34,17 @@ export default function DocumentsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Check for mobile screen size
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   useEffect(() => {
     if (session?.access_token) {
@@ -123,16 +134,23 @@ export default function DocumentsPage() {
   );
 
   return (
-    <div style={{ padding: "40px", maxWidth: "1200px", margin: "0 auto", animation: "fadeIn 0.5s ease-out" }}>
-      <div style={{ marginBottom: "40px", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+    <div style={{ padding: isMobile ? "24px" : "40px", maxWidth: "1200px", margin: "0 auto", animation: "fadeIn 0.5s ease-out" }}>
+      <div style={{ 
+        marginBottom: "40px", 
+        display: "flex", 
+        justifyContent: "space-between", 
+        alignItems: isMobile ? "flex-start" : "flex-end",
+        flexDirection: isMobile ? "column" : "row",
+        gap: "24px"
+      }}>
         <div>
-          <h1 style={{ fontSize: "32px", fontWeight: "700", color: "#F8FAFC", marginBottom: "8px", display: "flex", alignItems: "center", gap: "12px" }}>
-            <Database size={32} color="var(--primary-violet)" />
+          <h1 style={{ fontSize: isMobile ? "26px" : "32px", fontWeight: "700", color: "#F8FAFC", marginBottom: "8px", display: "flex", alignItems: "center", gap: "12px" }}>
+            <Database size={isMobile ? 24 : 32} color="var(--primary-violet)" />
             Knowledge Base
           </h1>
-          <p style={{ color: "var(--text-muted)", fontSize: "15px" }}>Manage documents uploaded to your AI's pgvector memory.</p>
+          <p style={{ color: "var(--text-muted)", fontSize: "14px" }}>Manage documents uploaded to your AI's pgvector memory.</p>
         </div>
-        <div style={{ position: "relative", width: "300px" }}>
+        <div style={{ position: "relative", width: isMobile ? "100%" : "300px" }}>
           <Search size={18} style={{ position: "absolute", left: "16px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
           <input 
             type="text" 
@@ -156,13 +174,40 @@ export default function DocumentsPage() {
         <div style={{ display: "flex", justifyContent: "center", padding: "100px 0" }}>
           <Loader2 className="animate-spin" size={32} color="var(--primary-violet)" />
         </div>
-      ) : filteredDocs.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "80px 0", background: "rgba(15, 23, 42, 0.4)", borderRadius: "24px", border: "1px dashed rgba(255,255,255,0.1)" }}>
-          <div style={{ width: "80px", height: "80px", background: "rgba(139, 92, 246, 0.1)", borderRadius: "24px", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}>
-            <AlertCircle size={40} color="var(--primary-violet)" />
-          </div>
-          <h3 style={{ fontSize: "20px", color: "white", marginBottom: "8px" }}>No documents found</h3>
-          <p style={{ color: "var(--text-muted)", fontSize: "15px" }}>Upload PDFs or text files in the Chat interface to add them here.</p>
+      ) : isMobile ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {filteredDocs.map((doc) => (
+            <div key={doc.id} className="glass-card" style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                <div style={{ 
+                  width: "40px", height: "40px", borderRadius: "12px", 
+                  background: "rgba(255, 255, 255, 0.03)", 
+                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
+                }}>
+                  {getFileIcon(doc.type, doc.name)}
+                </div>
+                <div style={{ overflow: "hidden" }}>
+                  <div style={{ color: "white", fontWeight: "600", fontSize: "15px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{doc.name}</div>
+                  <div style={{ color: "var(--text-muted)", fontSize: "12px" }}>{formatSize(doc.size)} • {formatDate(doc.created_at)}</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button 
+                  onClick={() => handleDownload(doc.id)}
+                  style={{ flex: 1, padding: "10px", borderRadius: "10px", background: "rgba(255,255,255,0.05)", border: "none", color: "white", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", fontSize: "13px" }}
+                >
+                  <Download size={16} /> Download
+                </button>
+                <button 
+                  onClick={() => handleDelete(doc.id)}
+                  disabled={isDeleting === doc.id}
+                  style={{ flex: 1, padding: "10px", borderRadius: "10px", background: "rgba(239, 68, 68, 0.1)", border: "none", color: "#EF4444", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", fontSize: "13px" }}
+                >
+                  {isDeleting === doc.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />} Delete
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div style={{ background: "rgba(15, 23, 42, 0.6)", borderRadius: "24px", border: "1px solid rgba(255,255,255,0.05)", overflow: "hidden" }}>
