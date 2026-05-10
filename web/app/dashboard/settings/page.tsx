@@ -58,6 +58,7 @@ export default function SettingsPage() {
   
   // Profile Image State
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarError, setAvatarError] = useState(false);
   
   // Subscription State
   const [subscription, setSubscription] = useState<any>({
@@ -66,6 +67,14 @@ export default function SettingsPage() {
     limits: { documents: 2, messages: 50 }
   });
   const [isUpgrading, setIsUpgrading] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   useEffect(() => {
     fetchUserData();
@@ -295,9 +304,17 @@ export default function SettingsPage() {
   ];
 
   const ROW = (label: string, value: React.ReactNode) => (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+    <div style={{ 
+      display: "flex", 
+      flexDirection: isMobile ? "column" : "row",
+      justifyContent: "space-between", 
+      alignItems: isMobile ? "flex-start" : "center", 
+      padding: "16px 0", 
+      gap: isMobile ? "4px" : "0",
+      borderBottom: "1px solid rgba(255,255,255,0.05)" 
+    }}>
       <span style={{ fontSize: "14px", color: "var(--text-muted)" }}>{label}</span>
-      <span style={{ fontSize: "14px", fontWeight: "600" }}>{value}</span>
+      <span style={{ fontSize: "14px", fontWeight: "600", wordBreak: "break-all" }}>{value}</span>
     </div>
   );
 
@@ -327,33 +344,82 @@ export default function SettingsPage() {
 
   return (
     <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "20px", animation: "fadeIn 0.5s ease-out" }}>
-      <header style={{ marginBottom: "32px" }}>
+      <header style={{ marginBottom: isMobile ? "24px" : "32px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px" }}>
-          <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: "rgba(139, 92, 246, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--primary-violet)" }}>
-            <Settings size={24} />
+          <div style={{ 
+            width: isMobile ? "32px" : "40px", 
+            height: isMobile ? "32px" : "40px", 
+            borderRadius: "10px", 
+            background: "rgba(139, 92, 246, 0.15)", 
+            display: "flex", 
+            alignItems: "center", 
+            justifyContent: "center", 
+            color: "var(--primary-violet)" 
+          }}>
+            <Settings size={isMobile ? 20 : 24} />
           </div>
-          <h1 style={{ fontSize: "28px", fontWeight: "800" }}>Account Settings</h1>
+          <h1 style={{ fontSize: isMobile ? "22px" : "28px", fontWeight: "800" }}>Account Settings</h1>
         </div>
-        <p style={{ color: "var(--text-muted)", marginLeft: "52px" }}>Configure your personal preferences and AI behavior.</p>
+        <p style={{ 
+          color: "var(--text-muted)", 
+          marginLeft: isMobile ? "0" : "52px",
+          fontSize: isMobile ? "13px" : "16px" 
+        }}>Configure your personal preferences and AI behavior.</p>
       </header>
 
-      <div style={{ display: "flex", gap: "32px", alignItems: "flex-start" }}>
+      <div style={{ 
+        display: "flex", 
+        flexDirection: isMobile ? "column" : "row",
+        gap: isMobile ? "24px" : "32px", 
+        alignItems: "flex-start" 
+      }}>
         
         {/* Sidebar Nav */}
-        <div style={{ width: "240px", flexShrink: 0, display: "flex", flexDirection: "column", gap: "8px" }}>
+        <div style={{ 
+          width: isMobile ? "100%" : "240px", 
+          flexShrink: 0, 
+          display: "flex", 
+          flexDirection: isMobile ? "row" : "column", 
+          gap: "8px",
+          overflowX: isMobile ? "auto" : "visible",
+          paddingBottom: isMobile ? "8px" : "0",
+          WebkitOverflowScrolling: "touch"
+        }}>
           {tabs.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               style={{
-                display: "flex", alignItems: "center", gap: "12px", padding: "14px 18px", borderRadius: "14px", border: "none",
+                display: "flex", 
+                alignItems: "center", 
+                gap: "12px", 
+                padding: isMobile ? "10px 16px" : "14px 18px", 
+                borderRadius: "14px", 
+                border: "none",
                 background: activeTab === tab.id ? "rgba(139, 92, 246, 0.1)" : "transparent",
                 color: activeTab === tab.id ? "var(--primary-violet)" : "var(--text-muted)",
-                fontSize: "14px", fontWeight: activeTab === tab.id ? "600" : "500", cursor: "pointer", transition: "all 0.2s", textAlign: "left", position: "relative",
+                fontSize: "14px", 
+                fontWeight: activeTab === tab.id ? "600" : "500", 
+                cursor: "pointer", 
+                transition: "all 0.2s", 
+                textAlign: "left", 
+                position: "relative",
+                whiteSpace: isMobile ? "nowrap" : "normal",
+                flex: isMobile ? "0 0 auto" : "none"
               }}
             >
               {activeTab === tab.id && (
-                <div style={{ position: "absolute", left: "0", top: "20%", height: "60%", width: "3px", background: "var(--primary-violet)", borderRadius: "0 4px 4px 0", boxShadow: "0 0 10px var(--primary-violet)" }} />
+                <div style={{ 
+                  position: "absolute", 
+                  left: isMobile ? "20%" : "0", 
+                  bottom: isMobile ? "0" : "auto",
+                  top: isMobile ? "auto" : "20%", 
+                  height: isMobile ? "2px" : "60%", 
+                  width: isMobile ? "60%" : "3px", 
+                  background: "var(--primary-violet)", 
+                  borderRadius: isMobile ? "4px 4px 0 0" : "0 4px 4px 0", 
+                  boxShadow: "0 0 10px var(--primary-violet)" 
+                }} />
               )}
               {tab.icon}
               {tab.label}
@@ -362,8 +428,13 @@ export default function SettingsPage() {
         </div>
 
         {/* Content Area */}
-        <div style={{ flex: 1 }}>
-          <div className="glass-card" style={{ padding: "40px", minHeight: "600px", position: "relative", overflow: "hidden" }}>
+        <div style={{ flex: 1, width: "100%" }}>
+          <div className="glass-card" style={{ 
+            padding: isMobile ? "24px" : "40px", 
+            minHeight: isMobile ? "auto" : "600px", 
+            position: "relative", 
+            overflow: "hidden" 
+          }}>
             
             {/* Profile Tab */}
             {activeTab === "profile" && (
@@ -383,8 +454,13 @@ export default function SettingsPage() {
                       overflow: "hidden"
                     }}>
                       <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, background: "linear-gradient(45deg, transparent, rgba(255,255,255,0.2), transparent)" }} />
-                      {user?.user_metadata?.avatar_url ? (
-                        <img src={user.user_metadata.avatar_url} alt="Avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      {user?.user_metadata?.avatar_url && !avatarError ? (
+                        <img 
+                          src={user.user_metadata.avatar_url} 
+                          alt="Avatar" 
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }} 
+                          onError={() => setAvatarError(true)}
+                        />
                       ) : (
                         <User size={40} color="white" />
                       )}
@@ -535,7 +611,12 @@ export default function SettingsPage() {
                   <div style={{ display: "flex", justifyContent: "center", padding: "100px 0" }}><Loader2 size={40} className="animate-spin" color="var(--primary-violet)" /></div>
                 ) : (
                   <>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "40px" }}>
+                    <div style={{ 
+                      display: "grid", 
+                      gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", 
+                      gap: "24px", 
+                      marginBottom: "40px" 
+                    }}>
                       {plans.map((plan) => (
                         <div key={plan.name} className="plan-card" style={{ padding: "32px", borderRadius: "24px", background: plan.popular ? "rgba(139, 92, 246, 0.05)" : "rgba(255,255,255,0.02)", border: plan.isCurrent ? "2px solid var(--primary-violet)" : "1px solid rgba(255,255,255,0.05)", position: "relative", display: "flex", flexDirection: "column" }}>
                           {plan.popular && <div style={{ position: "absolute", top: "0", right: "24px", transform: "translateY(-50%)", background: "var(--primary-violet)", color: "white", padding: "4px 12px", borderRadius: "10px", fontSize: "12px", fontWeight: "800", display: "flex", alignItems: "center", gap: "6px" }}><Star size={12} fill="white" /> MOST POPULAR</div>}
@@ -582,7 +663,11 @@ export default function SettingsPage() {
 
                     <div className="glass-card" style={{ padding: "24px", background: "rgba(255,255,255,0.01)" }}>
                       <h4 style={{ fontSize: "16px", fontWeight: "700", marginBottom: "20px" }}>Current Usage</h4>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
+                      <div style={{ 
+                        display: "grid", 
+                        gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", 
+                        gap: "24px" 
+                      }}>
                         <div>
                           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px", fontSize: "13px" }}>
                             <span style={{ color: "var(--text-muted)" }}>Documents Indexed</span>

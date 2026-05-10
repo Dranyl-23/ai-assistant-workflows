@@ -186,13 +186,13 @@ export default function IntegrationsPage() {
 
   useEffect(() => {
     fetchIntegrations();
-  }, [session]);
+  }, [session?.access_token]);
 
   useEffect(() => {
     if (activeTab === "logs" && session?.access_token) {
       fetchLogs();
     }
-  }, [activeTab, session]);
+  }, [activeTab, session?.access_token]);
 
   const fetchLogs = async () => {
     if (!session?.access_token) return;

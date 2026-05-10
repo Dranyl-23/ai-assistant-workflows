@@ -81,15 +81,17 @@ export default function ChatPage() {
 
   // Fetch Profile Plan
   useEffect(() => {
-    if (session?.user) {
-      import("@/lib/supabase").then(({ supabase }) => {
-        supabase.from("profiles").select("plan").eq("id", session.user.id).single()
-          .then(({ data }) => {
-            if (data) setUserPlan(data.plan);
-          });
-      });
+    if (session?.user?.id) {
+      supabase.from("profiles").select("plan").eq("id", session.user.id).maybeSingle()
+        .then(({ data, error }) => {
+          if (error) {
+            console.error("Error fetching plan:", error);
+            return;
+          }
+          if (data) setUserPlan(data.plan);
+        });
     }
-  }, [session]);
+  }, [session?.user?.id]);
 
   // Check for mobile screen size
   useEffect(() => {
@@ -323,7 +325,7 @@ export default function ChatPage() {
       socket.off("connect");
       socket.disconnect();
     };
-  }, [session]);
+  }, [session?.access_token]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
