@@ -163,7 +163,10 @@ const PROVIDER_WEBHOOK_MAP = {
   document_qa: "document-qa",
   voice: "voice-synthesizer-free",
   ai_chat: "ai-chat-with-search",
+  // AI often uses singular custom_agent, but your n8n workflow is named plural 'custom-agents'.
+  // Mapping both to 'custom-agents' for perfect compatibility.
   custom_agent: "custom-agents",
+  custom_agents: "custom-agents",
 };
 
 /**

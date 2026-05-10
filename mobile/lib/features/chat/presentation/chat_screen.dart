@@ -850,154 +850,166 @@ class ChatScreen extends ConsumerWidget {
 
   Widget _buildInputArea(BuildContext context, WidgetRef ref, ChatController chatState) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Colors.transparent, const Color(0xFF020617).withOpacity(0.8)],
+          colors: [Colors.transparent, Color(0xFF020617).withOpacity(0.8)],
         ),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          // Media Icons (Outside the Chatbox)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  constraints: const BoxConstraints(),
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-                  icon: chatState.isUploading
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF8B5CF6)))
-                      : const Icon(LucideIcons.plus, color: Color(0xFF8B5CF6), size: 22),
-                  onPressed: chatState.isUploading ? null : () => ref.read(chatProvider).uploadFile(),
-                ),
-                // Gallery picker
-                IconButton(
-                  constraints: const BoxConstraints(),
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-                  icon: const Icon(LucideIcons.image,
-                      color: Color(0xFF64748B), size: 20),
-                  onPressed: () async {
-                    HapticFeedback.lightImpact();
-                    final picker = ImagePicker();
-                    final XFile? selected = await picker.pickImage(
-                        source: ImageSource.gallery, imageQuality: 70);
-                    if (selected != null)
-                      ref.read(chatProvider).setImage(selected);
-                  },
-                ),
-                // Camera shortcut (#15)
-                IconButton(
-                  constraints: const BoxConstraints(),
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-                  icon: const Icon(LucideIcons.camera,
-                      color: Color(0xFF64748B), size: 20),
-                  onPressed: () async {
-                    HapticFeedback.lightImpact();
-                    final picker = ImagePicker();
-                    final XFile? selected = await picker.pickImage(
-                        source: ImageSource.camera, imageQuality: 70);
-                    if (selected != null)
-                      ref.read(chatProvider).setImage(selected);
-                  },
-                ),
-                const SizedBox(width: 4),
-              ],
-            ),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.1),
+            width: 1,
           ),
-          
-          // The Chatbox Container
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(color: Colors.white.withOpacity(0.1)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            // Unified Attachment Dropdown (Inside)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4, left: 4),
+              child: Theme(
+                data: Theme.of(context).copyWith(
+                  hoverColor: Colors.transparent,
+                  splashColor: Colors.transparent,
+                ),
+                child: PopupMenuButton<String>(
+                  offset: const Offset(0, -140),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  color: const Color(0xFF1E293B),
+                  icon: Container(
+                    height: 36,
+                    width: 36,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.05),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(LucideIcons.plus, color: Color(0xFF8B5CF6), size: 20),
+                  ),
+                  onSelected: (value) async {
+                    final picker = ImagePicker();
+                    if (value == 'document') {
+                      ref.read(chatProvider).uploadFile();
+                    } else if (value == 'gallery') {
+                      final XFile? selected = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+                      if (selected != null) ref.read(chatProvider).setImage(selected);
+                    } else if (value == 'camera') {
+                      final XFile? selected = await picker.pickImage(source: ImageSource.camera, imageQuality: 70);
+                      if (selected != null) ref.read(chatProvider).setImage(selected);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    _buildPopupItem('document', LucideIcons.fileText, 'Document'),
+                    _buildPopupItem('gallery', LucideIcons.image, 'Gallery'),
+                    _buildPopupItem('camera', LucideIcons.camera, 'Camera'),
+                  ],
+                ),
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: chatState.messageController,
-                      style: const TextStyle(color: Colors.white, fontSize: 15),
-                      maxLines: 5,
-                      minLines: 1,
-                      keyboardType: TextInputType.multiline,
-                      decoration: const InputDecoration(
-                        hintText: 'Message',
-                        hintStyle: TextStyle(color: Color(0xFF64748B), fontSize: 14),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.fromLTRB(14, 14, 4, 14),
-                      ),
+            ),
+
+            Expanded(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxHeight: 150,
+                ),
+                child: TextField(
+                  controller: chatState.messageController,
+                  style: GoogleFonts.inter(
+                    color: Colors.white,
+                    fontSize: 15,
+                    height: 1.4,
+                  ),
+                  maxLines: null,
+                  minLines: 1,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  decoration: InputDecoration(
+                    hintText: 'Message...',
+                    hintStyle: GoogleFonts.inter(
+                      color: Colors.white.withOpacity(0.3),
+                      fontSize: 15,
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
                     ),
                   ),
+                ),
+              ),
+            ),
                   
-                  // Mic Icon (Inside)
-                  // Bug 3 fix: icon semantics corrected.
-                  // - Idle   → mic icon (green-ish muted) = "tap me to record"
-                  // - Active → micOff icon (violet)       = "tap me to stop"
-                  // Previously inverted: micOff when idle made users think voice was disabled.
-                  IconButton(
-                    constraints: const BoxConstraints(),
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                    icon: Icon(
-                      chatState.isListening ? LucideIcons.micOff : LucideIcons.mic,
-                      color: chatState.isListening
-                          ? const Color(0xFFEF4444) // red when recording
-                          : const Color(0xFF64748B), // muted when idle
-                      size: 20,
-                    ),
-                    onPressed: chatState.isTyping
-                        ? null // Disable mic while AI is responding
-                        : () {
-                            final state = ref.read(chatProvider);
-                            if (!state.isListening) {
-                              state.listen();
-                              _showListeningBottomSheet(context, ref);
-                            } else {
-                              state.listen();
-                            }
-                          },
-                  ),
-                  
-                  // Send Icon (Inside)
-                  // Bug 4 fix (bonus): disabled while AI is streaming to prevent
-                  // message queuing. Opacity drop gives clear visual feedback.
+                  // Mic Icon
                   Padding(
-                    padding: const EdgeInsets.all(6.0),
-                    child: AnimatedOpacity(
-                      opacity: chatState.isTyping ? 0.4 : 1.0,
-                      duration: const Duration(milliseconds: 200),
-                      child: GestureDetector(
-                        onTap: chatState.isTyping
-                            ? null
-                            : () => chatState.sendMessage(onLimitReached: () {
-                                showDialog(
-                                  context: context,
-                                  barrierDismissible: false,
-                                  builder: (context) => const UpgradeModal(),
-                                );
-                              }),
-                        child: Container(
-                          height: 40,
-                          width: 40,
-                          decoration: BoxDecoration(
-                            gradient: chatState.isTyping
-                                ? null
-                                : const LinearGradient(
-                                    colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
-                                  ),
-                            color: chatState.isTyping
-                                ? const Color(0xFF334155)
-                                : null,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(LucideIcons.send, color: Colors.white, size: 18),
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: IconButton(
+                      constraints: const BoxConstraints(),
+                      padding: const EdgeInsets.all(10),
+                      icon: Icon(
+                        chatState.isListening ? LucideIcons.micOff : LucideIcons.mic,
+                        color: chatState.isListening
+                            ? const Color(0xFFEF4444)
+                            : Colors.white.withOpacity(0.4),
+                        size: 20,
+                      ),
+                      onPressed: chatState.isTyping ? null : () {
+                        final state = ref.read(chatProvider);
+                        if (!state.isListening) {
+                          state.listen();
+                          _showListeningBottomSheet(context, ref);
+                        } else {
+                          state.listen();
+                        }
+                      },
+                    ),
+                  ),
+                  
+                  // Send Button
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4, right: 4),
+                    child: GestureDetector(
+                      onTap: chatState.isTyping
+                          ? null
+                          : () => chatState.sendMessage(onLimitReached: () {
+                              showDialog(
+                                context: context,
+                                barrierDismissible: false,
+                                builder: (context) => const UpgradeModal(),
+                              );
+                            }),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        height: 40,
+                        width: 40,
+                        decoration: BoxDecoration(
+                          gradient: chatState.isTyping
+                              ? null
+                              : const LinearGradient(
+                                  colors: [Color(0xFF8B5CF6), Color(0xFF6366F1)],
+                                ),
+                          color: chatState.isTyping
+                              ? Colors.white.withOpacity(0.1)
+                              : null,
+                          shape: BoxShape.circle,
+                          boxShadow: chatState.isTyping ? [] : [
+                            BoxShadow(
+                              color: const Color(0xFF8B5CF6).withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          chatState.isTyping ? LucideIcons.loader2 : LucideIcons.send,
+                          color: chatState.isTyping ? Colors.white24 : Colors.white,
+                          size: 18,
                         ),
                       ),
                     ),
@@ -1005,9 +1017,6 @@ class ChatScreen extends ConsumerWidget {
                 ],
               ),
             ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1071,6 +1080,19 @@ class ChatScreen extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+
+  PopupMenuItem<String> _buildPopupItem(String value, IconData icon, String label) {
+    return PopupMenuItem(
+      value: value,
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: const Color(0xFF8B5CF6)),
+          const SizedBox(width: 12),
+          Text(label, style: GoogleFonts.inter(color: Colors.white, fontSize: 14)),
+        ],
+      ),
     );
   }
 }

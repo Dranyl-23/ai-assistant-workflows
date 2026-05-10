@@ -80,9 +80,7 @@ flutter:
   uses-material-design: true
 
   assets:
-    # .env removed — never bundle secrets in the app binary.
-    # Use --dart-define=KEY=VALUE at build time instead.
-    - assets/
+    - assets/app_icon.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
