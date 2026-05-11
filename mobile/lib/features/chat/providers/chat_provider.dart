@@ -32,7 +32,7 @@ String get backendUrl {
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
-final chatProvider = ChangeNotifierProvider<ChatController>((ref) {
+final chatProvider = Provider<ChatController>((ref) {
   final controller = ChatController();
   ref.onDispose(() => controller.dispose());
   return controller;

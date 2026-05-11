@@ -280,31 +280,33 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       ),
 
       // ── Upload FAB ─────────────────────────────────────────────────────────
-      floatingActionButton: _isUploading
-          ? FloatingActionButton.extended(
-              onPressed: null,
-              backgroundColor: const Color(0xFF8B5CF6),
-              icon: const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                    color: Colors.white, strokeWidth: 2),
-              ),
-              label: Text('Uploading...',
-                  style: GoogleFonts.inter(
-                      color: Colors.white, fontWeight: FontWeight.bold)),
-            )
-          : FloatingActionButton.extended(
-              onPressed: _uploadDocument,
-              backgroundColor: const Color(0xFF8B5CF6),
-              elevation: 4,
-              icon: const Icon(LucideIcons.upload, color: Colors.white, size: 20),
-              label: Text(
-                'Upload Document',
-                style: GoogleFonts.inter(
-                    color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-            ),
+      floatingActionButton: (_documents.isEmpty && !_isLoading && !_isUploading)
+          ? null
+          : _isUploading
+              ? FloatingActionButton.extended(
+                  onPressed: null,
+                  backgroundColor: const Color(0xFF8B5CF6),
+                  icon: const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        color: Colors.white, strokeWidth: 2),
+                  ),
+                  label: Text('Uploading...',
+                      style: GoogleFonts.inter(
+                          color: Colors.white, fontWeight: FontWeight.bold)),
+                )
+              : FloatingActionButton.extended(
+                  onPressed: _uploadDocument,
+                  backgroundColor: const Color(0xFF8B5CF6),
+                  elevation: 4,
+                  icon: const Icon(LucideIcons.upload, color: Colors.white, size: 20),
+                  label: Text(
+                    'Upload Document',
+                    style: GoogleFonts.inter(
+                        color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                ),
     );
   }
 
