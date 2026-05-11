@@ -2,16 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { 
-  FileText, 
+import {
+  FileText,
   FileSpreadsheet,
   FileCode,
   FileJson,
   FileImage,
   FileAudio,
-  Trash2, 
-  Download, 
-  Clock, 
+  Trash2,
+  Download,
+  Clock,
   Database,
   Search,
   Loader2,
@@ -71,7 +71,7 @@ export default function DocumentsPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this document? This will also remove it from the AI's knowledge base.")) return;
-    
+
     setIsDeleting(id);
     try {
       const response = await fetch(`${API_URL}/documents/${id}`, {
@@ -125,20 +125,20 @@ export default function DocumentsPage() {
     if (lowerType.includes("image") || lowerName.endsWith(".png") || lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) return <FileImage size={20} color="#60A5FA" />;
     if (lowerType.includes("audio") || lowerName.endsWith(".mp3") || lowerName.endsWith(".wav")) return <FileAudio size={20} color="#A78BFA" />;
     if (lowerType.includes("javascript") || lowerType.includes("typescript") || lowerName.endsWith(".js") || lowerName.endsWith(".ts")) return <FileCode size={20} color="#60A5FA" />;
-    
+
     return <FileText size={20} color="var(--primary-violet)" />;
   };
 
-  const filteredDocs = documents.filter(doc => 
+  const filteredDocs = documents.filter(doc =>
     doc.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
     <div style={{ padding: isMobile ? "24px" : "40px", maxWidth: "1200px", margin: "0 auto", animation: "fadeIn 0.5s ease-out" }}>
-      <div style={{ 
-        marginBottom: "40px", 
-        display: "flex", 
-        justifyContent: "space-between", 
+      <div style={{
+        marginBottom: "40px",
+        display: "flex",
+        justifyContent: "space-between",
         alignItems: isMobile ? "flex-start" : "flex-end",
         flexDirection: isMobile ? "column" : "row",
         gap: "24px"
@@ -152,15 +152,15 @@ export default function DocumentsPage() {
         </div>
         <div style={{ position: "relative", width: isMobile ? "100%" : "300px" }}>
           <Search size={18} style={{ position: "absolute", left: "16px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
-          <input 
-            type="text" 
-            placeholder="Search documents..." 
+          <input
+            type="text"
+            placeholder="Search documents..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ 
-              width: "100%", padding: "12px 16px 12px 42px", 
-              background: "rgba(15, 23, 42, 0.6)", 
-              border: "1px solid rgba(255,255,255,0.08)", 
+            style={{
+              width: "100%", padding: "12px 16px 12px 42px",
+              background: "rgba(15, 23, 42, 0.6)",
+              border: "1px solid rgba(255,255,255,0.08)",
               borderRadius: "12px", color: "white", outline: "none",
               transition: "border 0.2s"
             }}
@@ -179,9 +179,9 @@ export default function DocumentsPage() {
           {filteredDocs.map((doc) => (
             <div key={doc.id} className="glass-card" style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-                <div style={{ 
-                  width: "40px", height: "40px", borderRadius: "12px", 
-                  background: "rgba(255, 255, 255, 0.03)", 
+                <div style={{
+                  width: "40px", height: "40px", borderRadius: "12px",
+                  background: "rgba(255, 255, 255, 0.03)",
                   display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
                 }}>
                   {getFileIcon(doc.type, doc.name)}
@@ -192,13 +192,13 @@ export default function DocumentsPage() {
                 </div>
               </div>
               <div style={{ display: "flex", gap: "10px" }}>
-                <button 
+                <button
                   onClick={() => handleDownload(doc.id)}
                   style={{ flex: 1, padding: "10px", borderRadius: "10px", background: "rgba(255,255,255,0.05)", border: "none", color: "white", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", fontSize: "13px" }}
                 >
                   <Download size={16} /> Download
                 </button>
-                <button 
+                <button
                   onClick={() => handleDelete(doc.id)}
                   disabled={isDeleting === doc.id}
                   style={{ flex: 1, padding: "10px", borderRadius: "10px", background: "rgba(239, 68, 68, 0.1)", border: "none", color: "#EF4444", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", fontSize: "13px" }}
@@ -225,11 +225,11 @@ export default function DocumentsPage() {
                 <tr key={doc.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.02)", transition: "background 0.2s" }} onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.02)"} onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
                   <td style={{ padding: "20px 24px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-                      <div style={{ 
-                        width: "40px", height: "40px", borderRadius: "12px", 
-                        background: "rgba(255, 255, 255, 0.03)", 
+                      <div style={{
+                        width: "40px", height: "40px", borderRadius: "12px",
+                        background: "rgba(255, 255, 255, 0.03)",
                         border: "1px solid rgba(255, 255, 255, 0.05)",
-                        display: "flex", alignItems: "center", justifyContent: "center" 
+                        display: "flex", alignItems: "center", justifyContent: "center"
                       }}>
                         {getFileIcon(doc.type, doc.name)}
                       </div>
@@ -248,7 +248,7 @@ export default function DocumentsPage() {
                   </td>
                   <td style={{ padding: "20px 24px", textAlign: "right" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "12px" }}>
-                      <button 
+                      <button
                         onClick={() => handleDownload(doc.id)}
                         style={{ width: "36px", height: "36px", borderRadius: "10px", background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer", transition: "0.2s" }}
                         onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
@@ -257,7 +257,7 @@ export default function DocumentsPage() {
                       >
                         <Download size={16} color="#CBD5E1" />
                       </button>
-                      <button 
+                      <button
                         onClick={() => handleDelete(doc.id)}
                         disabled={isDeleting === doc.id}
                         style={{ width: "36px", height: "36px", borderRadius: "10px", background: "rgba(239, 68, 68, 0.1)", display: "flex", alignItems: "center", justifyContent: "center", border: "none", cursor: isDeleting === doc.id ? "not-allowed" : "pointer", transition: "0.2s" }}

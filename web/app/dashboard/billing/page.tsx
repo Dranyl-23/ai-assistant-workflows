@@ -47,7 +47,7 @@ export default function BillingSuccessPage() {
         <div style={{ maxWidth: "480px", width: "100%", textAlign: "center", zIndex: 1 }} className="animate-fade-in">
           <div className="glass-card" style={{ padding: "56px 40px", borderRadius: "28px" }}>
             <div style={{ width: "80px", height: "80px", borderRadius: "50%", background: "rgba(251,113,133,0.1)", border: "1px solid rgba(251,113,133,0.2)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 28px" }}>
-              <span style={{ fontSize: "36px" }}>😔</span>
+              <span style={{ fontSize: "36px" }}></span>
             </div>
             <h1 style={{ fontSize: "28px", fontWeight: "800", marginBottom: "12px" }}>Payment Cancelled</h1>
             <p style={{ color: "var(--text-secondary)", fontSize: "15px", lineHeight: "1.7", marginBottom: "40px" }}>

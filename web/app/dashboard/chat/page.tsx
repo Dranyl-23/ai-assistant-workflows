@@ -5,20 +5,20 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { socket } from "@/lib/socket";
 import { supabase } from "@/lib/supabase";
-import { 
-  Send, 
-  Bot, 
-  User, 
-  Globe, 
-  Paperclip, 
-  Loader2, 
-  Plus, 
-  MessageSquare, 
-  Trash2, 
+import {
+  Send,
+  Bot,
+  User,
+  Globe,
+  Paperclip,
+  Loader2,
+  Plus,
+  MessageSquare,
+  Trash2,
   Edit2,
   Check,
   Search,
-  ChevronLeft, 
+  ChevronLeft,
   ChevronRight,
   ChevronDown,
   Clock,
@@ -104,7 +104,7 @@ export default function ChatPage() {
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
-  
+
   // Modal State
   const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; convId: string | null; convTitle: string }>({
     isOpen: false,
@@ -158,7 +158,7 @@ export default function ChatPage() {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Helper to strip internal tags from display
@@ -180,8 +180,7 @@ export default function ChatPage() {
     if (!session?.access_token) return;
 
     fetchConversations();
-    
-    // Fetch user preferences for AI Model and Language
+
     const fetchUserPrefs = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user?.user_metadata?.ai_model) {
@@ -202,10 +201,6 @@ export default function ChatPage() {
 
     socket.connect();
     socket.emit("authenticate", session.access_token);
-
-    // Fired by backend the moment a NEW conversation row is created.
-    // Optimistically add it to the sidebar list so the user sees it instantly
-    // without waiting for the stream_end network refresh.
     socket.on("conversation_created", ({ id, title }: { id: string; title: string }) => {
       setCurrentConversationId(id);
       setConversations((prev) => {
@@ -219,9 +214,6 @@ export default function ChatPage() {
       setCurrentConversationId(conversation_id);
       setStreamingContent("");
       setIsLoading(true);
-      // Note: fetchConversations() removed from here — conversation_created
-      // handles new conversations optimistically. Fetching here was redundant
-      // and caused unnecessary network traffic before the AI even replied.
     });
 
     socket.on("stream_chunk", ({ chunk }: { chunk: string }) => {
@@ -234,8 +226,6 @@ export default function ChatPage() {
       setIsLoading(false);
       setIsSearching(false);
       setCurrentStatus("");
-      // Only refresh here — the conversation title may have been generated
-      // by the backend after the first message, so we fetch the updated title.
       fetchConversations();
     });
 
@@ -259,8 +249,6 @@ export default function ChatPage() {
       }
     });
 
-    // If the socket drops mid-stream (e.g. n8n action takes too long),
-    // clear the thinking state immediately so the UI doesn't freeze.
     socket.on("disconnect", (reason) => {
       console.warn("[Socket] Disconnected:", reason);
       setIsLoading(false);
@@ -268,14 +256,10 @@ export default function ChatPage() {
       setStreamingContent("");
     });
 
-    // On reconnect, re-fetch messages for the active conversation.
-    // The backend saves the AI response to DB before emitting stream_end,
-    // so we can recover the full response even if the socket dropped.
     socket.on("connect", () => {
       socket.emit("authenticate", session.access_token);
       setCurrentConversationId((convId) => {
         if (convId) {
-          // Re-fetch saved messages to surface the AI reply that was lost
           fetch(`${API_URL}/chat/conversations/${convId}`, {
             headers: { Authorization: `Bearer ${session.access_token}` },
           })
@@ -295,7 +279,7 @@ export default function ChatPage() {
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.continuous = true;
       recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = selectedLanguage; 
+      recognitionRef.current.lang = selectedLanguage;
 
       recognitionRef.current.onresult = (event: any) => {
         let interimTranscript = '';
@@ -306,11 +290,6 @@ export default function ChatPage() {
           } else {
             interimTranscript += event.results[i][0].transcript;
           }
-        }
-        // Update input with interim text so user sees live feedback
-        if (interimTranscript) {
-           // We don't want to overwrite the whole input, just show it's working
-           // For simplicity, we just log or append to placeholder
         }
       };
     }
@@ -341,7 +320,7 @@ export default function ChatPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
+
       // 1. Start High-Quality Recorder (for Whisper)
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
@@ -366,7 +345,7 @@ export default function ChatPage() {
           });
 
           if (!response.ok) throw new Error("Transcription failed");
-          
+
           const data = await response.json();
           if (data.text) {
             // OVERWRITE or append the final high-quality result from Whisper
@@ -457,13 +436,13 @@ export default function ChatPage() {
     e.preventDefault();
     e.stopPropagation();
     if (!editingConvTitle.trim() || !session?.access_token) return;
-    
+
     try {
       const response = await fetch(`${API_URL}/chat/conversations/${id}`, {
         method: "PATCH",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}` 
+          Authorization: `Bearer ${session.access_token}`
         },
         body: JSON.stringify({ title: editingConvTitle }),
       });
@@ -554,7 +533,7 @@ export default function ChatPage() {
 
   return (
     <div style={{ display: "flex", height: "100vh", background: "transparent", overflow: "hidden", flex: 1 }}>
-      
+
       {/* Deletion Confirmation Modal */}
       {deleteModal.isOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, animation: "fadeIn 0.2s ease-out" }}>
@@ -593,19 +572,19 @@ export default function ChatPage() {
           <button onClick={handleNewChat} className="btn-primary" style={{ width: "100%", justifyContent: "center", gap: "10px", padding: "12px", borderRadius: "14px", fontSize: "14px", fontWeight: "600" }}>
             <Plus size={18} /> New Conversation
           </button>
-          
+
           {/* Conversation Search */}
           <div style={{ position: "relative" }}>
             <Search size={14} style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
-            <input 
-              type="text" 
-              placeholder="Search chats..." 
+            <input
+              type="text"
+              placeholder="Search chats..."
               value={convSearchQuery}
               onChange={(e) => setConvSearchQuery(e.target.value)}
-              style={{ 
-                width: "100%", padding: "10px 12px 10px 34px", 
-                background: "rgba(30, 41, 59, 0.5)", 
-                border: "1px solid rgba(255,255,255,0.05)", 
+              style={{
+                width: "100%", padding: "10px 12px 10px 34px",
+                background: "rgba(30, 41, 59, 0.5)",
+                border: "1px solid rgba(255,255,255,0.05)",
                 borderRadius: "10px", color: "white", fontSize: "12px", outline: "none"
               }}
             />
@@ -619,67 +598,67 @@ export default function ChatPage() {
               conversations
                 .filter(c => (c.title || "").toLowerCase().includes(convSearchQuery.toLowerCase()))
                 .map((conv) => (
-                <div 
-                  key={conv.id} 
-                  onClick={() => loadConversation(conv.id)} 
-                  onMouseEnter={() => setHoveredConvId(conv.id)}
-                  onMouseLeave={() => setHoveredConvId(null)}
-                  className="conv-item" 
-                  style={{ 
-                    padding: "10px 12px", 
-                    borderRadius: "10px", 
-                    cursor: "pointer", 
-                    background: currentConversationId === conv.id ? "rgba(139, 92, 246, 0.12)" : (hoveredConvId === conv.id ? "rgba(255,255,255,0.03)" : "transparent"), 
-                    color: currentConversationId === conv.id ? "white" : "var(--text-muted)", 
-                    fontSize: "13px", 
-                    display: "flex", 
-                    alignItems: "center", 
-                    gap: "10px", 
-                    transition: "all 0.2s", 
-                    position: "relative" 
-                  }}
-                >
-                  <MessageSquare size={14} color={currentConversationId === conv.id ? "var(--primary-violet)" : "inherit"} style={{ flexShrink: 0 }} />
-                  
-                  {editingConvId === conv.id ? (
-                    <form onSubmit={(e) => handleRenameConversation(e, conv.id)} style={{ flex: 1, display: "flex", alignItems: "center" }}>
-                      <input 
-                        autoFocus
-                        value={editingConvTitle}
-                        onChange={(e) => setEditingConvTitle(e.target.value)}
-                        onBlur={(e) => handleRenameConversation(e as any, conv.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        style={{ width: "100%", background: "rgba(0,0,0,0.3)", border: "1px solid var(--primary-violet)", borderRadius: "4px", color: "white", fontSize: "13px", padding: "2px 6px", outline: "none" }}
-                      />
-                    </form>
-                  ) : (
-                    <div style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: currentConversationId === conv.id ? "600" : "400", minWidth: 0 }}>{conv.title || "Untitled Chat"}</div>
-                  )}
+                  <div
+                    key={conv.id}
+                    onClick={() => loadConversation(conv.id)}
+                    onMouseEnter={() => setHoveredConvId(conv.id)}
+                    onMouseLeave={() => setHoveredConvId(null)}
+                    className="conv-item"
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: "10px",
+                      cursor: "pointer",
+                      background: currentConversationId === conv.id ? "rgba(139, 92, 246, 0.12)" : (hoveredConvId === conv.id ? "rgba(255,255,255,0.03)" : "transparent"),
+                      color: currentConversationId === conv.id ? "white" : "var(--text-muted)",
+                      fontSize: "13px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      transition: "all 0.2s",
+                      position: "relative"
+                    }}
+                  >
+                    <MessageSquare size={14} color={currentConversationId === conv.id ? "var(--primary-violet)" : "inherit"} style={{ flexShrink: 0 }} />
 
-                  <div className="conv-actions" style={{ display: "flex", gap: "4px", opacity: hoveredConvId === conv.id ? 1 : 0, transition: "opacity 0.2s" }}>
-                    <button 
-                      onClick={(e) => { 
-                        e.stopPropagation(); 
-                        setEditingConvId(conv.id); 
-                        setEditingConvTitle(conv.title || ""); 
-                      }} 
-                      style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "4px", borderRadius: "6px" }}
-                      onMouseEnter={(e) => e.currentTarget.style.color = "white"}
-                      onMouseLeave={(e) => e.currentTarget.style.color = "var(--text-muted)"}
-                    >
-                      <Edit2 size={12} />
-                    </button>
-                    <button 
-                      onClick={(e) => confirmDelete(e, conv.id, conv.title)} 
-                      style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "4px", borderRadius: "6px" }}
-                      onMouseEnter={(e) => e.currentTarget.style.color = "#ef4444"}
-                      onMouseLeave={(e) => e.currentTarget.style.color = "var(--text-muted)"}
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                    {editingConvId === conv.id ? (
+                      <form onSubmit={(e) => handleRenameConversation(e, conv.id)} style={{ flex: 1, display: "flex", alignItems: "center" }}>
+                        <input
+                          autoFocus
+                          value={editingConvTitle}
+                          onChange={(e) => setEditingConvTitle(e.target.value)}
+                          onBlur={(e) => handleRenameConversation(e as any, conv.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{ width: "100%", background: "rgba(0,0,0,0.3)", border: "1px solid var(--primary-violet)", borderRadius: "4px", color: "white", fontSize: "13px", padding: "2px 6px", outline: "none" }}
+                        />
+                      </form>
+                    ) : (
+                      <div style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: currentConversationId === conv.id ? "600" : "400", minWidth: 0 }}>{conv.title || "Untitled Chat"}</div>
+                    )}
+
+                    <div className="conv-actions" style={{ display: "flex", gap: "4px", opacity: hoveredConvId === conv.id ? 1 : 0, transition: "opacity 0.2s" }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingConvId(conv.id);
+                          setEditingConvTitle(conv.title || "");
+                        }}
+                        style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "4px", borderRadius: "6px" }}
+                        onMouseEnter={(e) => e.currentTarget.style.color = "white"}
+                        onMouseLeave={(e) => e.currentTarget.style.color = "var(--text-muted)"}
+                      >
+                        <Edit2 size={12} />
+                      </button>
+                      <button
+                        onClick={(e) => confirmDelete(e, conv.id, conv.title)}
+                        style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "4px", borderRadius: "6px" }}
+                        onMouseEnter={(e) => e.currentTarget.style.color = "#ef4444"}
+                        onMouseLeave={(e) => e.currentTarget.style.color = "var(--text-muted)"}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                ))
             )}
           </div>
         </div>
@@ -688,26 +667,26 @@ export default function ChatPage() {
       {/* Main Chat Area */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, position: "relative", background: "rgba(15, 23, 42, 0.2)", flexShrink: 0 }}>
         {!isMobile && (
-          <button 
-            onClick={() => setShowSidebar(!showSidebar)} 
-            style={{ 
-              position: "absolute", 
-              left: showSidebar ? "-16px" : "8px", 
-              top: "50%", 
-              transform: "translateY(-50%)", 
-              background: "rgba(30, 41, 59, 0.95)", 
-              border: "1px solid var(--border-primary)", 
-              borderRadius: "50%", 
-              width: "32px", 
-              height: "32px", 
-              display: "flex", 
-              alignItems: "center", 
-              justifyContent: "center", 
-              color: "white", 
-              cursor: "pointer", 
-              zIndex: 100, 
-              transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)", 
-              boxShadow: "0 8px 24px rgba(0,0,0,0.5)" 
+          <button
+            onClick={() => setShowSidebar(!showSidebar)}
+            style={{
+              position: "absolute",
+              left: showSidebar ? "-16px" : "8px",
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "rgba(30, 41, 59, 0.95)",
+              border: "1px solid var(--border-primary)",
+              borderRadius: "50%",
+              width: "32px",
+              height: "32px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "white",
+              cursor: "pointer",
+              zIndex: 100,
+              transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.5)"
             }}
           >
             {showSidebar ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
@@ -733,15 +712,15 @@ export default function ChatPage() {
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
               {/* Custom Model Switcher */}
               <div style={{ position: "relative" }} ref={modelMenuRef}>
-                <button 
+                <button
                   onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
-                  style={{ 
-                    display: "flex", 
-                    alignItems: "center", 
-                    gap: "10px", 
-                    background: "rgba(255,255,255,0.03)", 
-                    padding: "8px 14px", 
-                    borderRadius: "14px", 
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    background: "rgba(255,255,255,0.03)",
+                    padding: "8px 14px",
+                    borderRadius: "14px",
                     border: "1px solid rgba(255,255,255,0.08)",
                     cursor: "pointer",
                     transition: "all 0.2s"
@@ -750,20 +729,20 @@ export default function ChatPage() {
                 >
                   <Cpu size={14} color="var(--primary-violet)" />
                   <span style={{ fontSize: "12px", fontWeight: "700", color: "white" }}>
-                    {selectedModel === "llama-3.1-8b-instant" ? "Llama 8B (Fast)" : 
-                     selectedModel === "deepseek-r1-distill-llama-70b" ? "DeepSeek R1" : "Llama 70B (Smart)"}
+                    {selectedModel === "llama-3.1-8b-instant" ? "Llama 8B (Fast)" :
+                      selectedModel === "deepseek-r1-distill-llama-70b" ? "DeepSeek R1" : "Llama 70B (Smart)"}
                   </span>
                   <ChevronDown size={14} color="var(--text-muted)" style={{ transform: isModelMenuOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
                 </button>
 
                 {isModelMenuOpen && (
-                  <div className="glass-card" style={{ 
-                    position: "absolute", 
-                    top: "calc(100% + 10px)", 
-                    right: 0, 
-                    width: "240px", 
-                    padding: "8px", 
-                    zIndex: 100, 
+                  <div className="glass-card" style={{
+                    position: "absolute",
+                    top: "calc(100% + 10px)",
+                    right: 0,
+                    width: "240px",
+                    padding: "8px",
+                    zIndex: 100,
                     boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
                     border: "1px solid rgba(255,255,255,0.08)",
                     animation: "fadeIn 0.2s ease-out"
@@ -788,13 +767,13 @@ export default function ChatPage() {
                               setIsModelMenuOpen(false);
                             }
                           }}
-                          style={{ 
-                            width: "100%", 
-                            padding: "12px", 
-                            borderRadius: "10px", 
-                            display: "flex", 
-                            alignItems: "center", 
-                            gap: "12px", 
+                          style={{
+                            width: "100%",
+                            padding: "12px",
+                            borderRadius: "10px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "12px",
                             background: selectedModel === m.id ? "rgba(139, 92, 246, 0.1)" : "transparent",
                             border: "none",
                             textAlign: "left",
@@ -821,13 +800,13 @@ export default function ChatPage() {
         )}
 
         {/* Messages Container */}
-        <div style={{ 
-          flex: 1, 
-          overflowY: "auto", 
-          padding: isMobile ? "12px 12px 30px" : "24px 24px 40px", 
-          display: "flex", 
-          flexDirection: "column", 
-          gap: isMobile ? "20px" : "32px" 
+        <div style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: isMobile ? "12px 12px 30px" : "24px 24px 40px",
+          display: "flex",
+          flexDirection: "column",
+          gap: isMobile ? "20px" : "32px"
         }} className="chat-scroll">
           {messages.length === 0 && !streamingContent && (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "24px", color: "var(--text-muted)", animation: "fadeIn 0.5s ease-out", padding: "20px" }}>
@@ -836,13 +815,13 @@ export default function ChatPage() {
                 <h3 style={{ fontSize: isMobile ? "20px" : "24px", fontWeight: "700", color: "white", marginBottom: "8px" }}>How can I help you?</h3>
                 <p style={{ fontSize: "14px", maxWidth: "400px", lineHeight: "1.5" }}>Talk to me, upload documents, or search the web.</p>
               </div>
-              
+
               <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px", width: "100%", maxWidth: "500px", marginTop: "8px" }}>
                 {[
                   { title: "Summarize Document", icon: <FileText size={16} /> },
                   { title: "Search Web", icon: <Globe size={16} /> }
                 ].map((prompt, idx) => (
-                  <button 
+                  <button
                     key={idx}
                     onClick={() => { setInput(prompt.title); document.getElementById('chat-input')?.focus(); }}
                     style={{ background: "rgba(15, 23, 42, 0.4)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "14px", padding: "14px", textAlign: "left", cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", gap: "12px" }}
@@ -856,15 +835,15 @@ export default function ChatPage() {
           )}
 
           {messages.map((msg) => (
-            <div key={msg.id} style={{ 
-              display: "flex", 
-              gap: isMobile ? "8px" : "16px", 
-              maxWidth: msg.role === "user" ? (isMobile ? "92%" : "80%") : (isMobile ? "95%" : "88%"), 
-              alignSelf: msg.role === "user" ? "flex-end" : "flex-start", 
-              flexDirection: msg.role === "user" ? "row-reverse" : "row", 
-              animation: "slideIn 0.3s ease-out" 
+            <div key={msg.id} style={{
+              display: "flex",
+              gap: isMobile ? "8px" : "16px",
+              maxWidth: msg.role === "user" ? (isMobile ? "92%" : "80%") : (isMobile ? "95%" : "88%"),
+              alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
+              flexDirection: msg.role === "user" ? "row-reverse" : "row",
+              animation: "slideIn 0.3s ease-out"
             }}>
-              
+
               {/* Avatar */}
               {msg.role === "assistant" && (
                 <div style={{ width: "36px", height: "36px", borderRadius: "10px", background: "var(--gradient-primary)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 4px 15px rgba(139, 92, 246, 0.3)" }}>
@@ -873,16 +852,16 @@ export default function ChatPage() {
               )}
 
               {/* Bubble */}
-              <div style={{ 
-                padding: msg.metadata?.image && !msg.content ? "8px" : "16px 22px", 
-                borderRadius: "20px", 
-                borderTopRightRadius: msg.role === "user" ? "4px" : "20px", 
-                borderTopLeftRadius: msg.role === "user" ? "20px" : "4px", 
-                background: msg.role === "user" ? "rgba(255, 255, 255, 0.06)" : "rgba(30, 41, 59, 0.7)", 
-                border: msg.role === "user" ? "1px solid rgba(255, 255, 255, 0.04)" : "1px solid rgba(255, 255, 255, 0.08)", 
-                fontSize: "15px", 
-                lineHeight: "1.7", 
-                color: msg.role === "user" ? "#F8FAFC" : "#E2E8F0", 
+              <div style={{
+                padding: msg.metadata?.image && !msg.content ? "8px" : "16px 22px",
+                borderRadius: "20px",
+                borderTopRightRadius: msg.role === "user" ? "4px" : "20px",
+                borderTopLeftRadius: msg.role === "user" ? "20px" : "4px",
+                background: msg.role === "user" ? "rgba(255, 255, 255, 0.06)" : "rgba(30, 41, 59, 0.7)",
+                border: msg.role === "user" ? "1px solid rgba(255, 255, 255, 0.04)" : "1px solid rgba(255, 255, 255, 0.08)",
+                fontSize: "15px",
+                lineHeight: "1.7",
+                color: msg.role === "user" ? "#F8FAFC" : "#E2E8F0",
                 boxShadow: msg.role === "user" ? "none" : "0 10px 30px rgba(0,0,0,0.2)",
                 backdropFilter: msg.role === "user" ? "blur(10px)" : "blur(12px)",
                 display: "flex",
@@ -898,7 +877,7 @@ export default function ChatPage() {
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
-                        code({node, inline, className, children, ...props}: any) {
+                        code({ node, inline, className, children, ...props }: any) {
                           const match = /language-(\w+)/.exec(className || '')
                           return !inline && match ? (
                             <SyntaxHighlighter
@@ -935,7 +914,7 @@ export default function ChatPage() {
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
-                      code({node, inline, className, children, ...props}: any) {
+                      code({ node, inline, className, children, ...props }: any) {
                         const match = /language-(\w+)/.exec(className || '')
                         return !inline && match ? (
                           <SyntaxHighlighter
@@ -971,14 +950,14 @@ export default function ChatPage() {
         </div>
 
         {/* Input Bar */}
-        <div style={{ 
-          padding: isMobile ? "12px" : "24px", 
-          background: "rgba(15, 23, 42, 0.4)", 
-          borderTop: "1px solid rgba(255, 255, 255, 0.03)", 
-          flexShrink: 0 
+        <div style={{
+          padding: isMobile ? "12px" : "24px",
+          background: "rgba(15, 23, 42, 0.4)",
+          borderTop: "1px solid rgba(255, 255, 255, 0.03)",
+          flexShrink: 0
         }}>
           <div style={{ maxWidth: "800px", margin: "0 auto", position: "relative" }}>
-            
+
             {/* Stop Generation Button */}
             {isLoading && (
               <div style={{ position: "absolute", bottom: "100%", left: "50%", transform: "translateX(-50%)", marginBottom: "16px", animation: "slideUp 0.3s ease-out", zIndex: 10 }}>
@@ -1057,32 +1036,32 @@ export default function ChatPage() {
                 </button>
               </div>
 
-              <textarea 
+              <textarea
                 id="chat-input"
-                value={input} 
+                value={input}
                 onChange={(e) => {
                   setInput(e.target.value);
                   e.target.style.height = 'auto';
                   e.target.style.height = e.target.scrollHeight + 'px';
-                }} 
-                placeholder={isRecording ? "Listening..." : (isMobile ? "Message..." : "Message LuminaAI...")} 
+                }}
+                placeholder={isRecording ? "Listening..." : (isMobile ? "Message..." : "Message LuminaAI...")}
                 rows={1}
-                style={{ 
-                  flex: 1, 
-                  background: "transparent", 
-                  border: "none", 
-                  color: "white", 
-                  padding: "10px 4px", 
-                  outline: "none", 
+                style={{
+                  flex: 1,
+                  background: "transparent",
+                  border: "none",
+                  color: "white",
+                  padding: "10px 4px",
+                  outline: "none",
                   fontSize: "14px",
                   resize: "none",
                   maxHeight: "150px",
                   fontFamily: "inherit",
                   lineHeight: "1.5",
                   overflowY: "auto"
-                }} 
+                }}
               />
-              
+
               <button type="submit" disabled={(!input.trim() && !attachedImage && attachedFiles.length === 0) || isLoading} style={{ width: isMobile ? "40px" : "48px", height: isMobile ? "40px" : "48px", borderRadius: "14px", background: "var(--gradient-primary)", border: "none", color: "white", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
                 {isLoading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
               </button>
@@ -1119,14 +1098,14 @@ export default function ChatPage() {
 
       {/* Upgrade Modal */}
       {showUpgradeModal && (
-        <div style={{ 
-          position: "fixed", inset: 0, zIndex: 10000, 
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 10000,
           display: "flex", alignItems: "center", justifyContent: "center",
           background: "rgba(0,0,0,0.4)", backdropFilter: "blur(8px)",
           animation: "fadeIn 0.3s ease-out"
         }}>
-          <div className="glass-card" style={{ 
-            width: "90%", maxWidth: "420px", padding: "40px", 
+          <div className="glass-card" style={{
+            width: "90%", maxWidth: "420px", padding: "40px",
             textAlign: "center", border: "1px solid rgba(139, 92, 246, 0.3)",
             background: "rgba(15, 23, 42, 0.8)", boxShadow: "0 25px 50px rgba(0,0,0,0.5)",
             animation: "slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
@@ -1134,12 +1113,12 @@ export default function ChatPage() {
           }}>
             {/* Background Glow */}
             <div style={{ position: "absolute", top: "-50px", right: "-50px", width: "150px", height: "150px", background: "rgba(139, 92, 246, 0.2)", filter: "blur(40px)", borderRadius: "50%" }} />
-            
-            <div style={{ 
-              width: "72px", height: "72px", borderRadius: "22px", 
-              background: "var(--gradient-primary)", display: "flex", 
+
+            <div style={{
+              width: "72px", height: "72px", borderRadius: "22px",
+              background: "var(--gradient-primary)", display: "flex",
               alignItems: "center", justifyContent: "center", margin: "0 auto 24px",
-              boxShadow: "0 15px 30px rgba(139, 92, 246, 0.4)" 
+              boxShadow: "0 15px 30px rgba(139, 92, 246, 0.4)"
             }}>
               <Zap size={36} color="white" fill="white" />
             </div>
@@ -1150,18 +1129,18 @@ export default function ChatPage() {
             </p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <button 
-                onClick={() => router.push("/dashboard/settings")} 
-                className="btn-primary" 
+              <button
+                onClick={() => router.push("/dashboard/settings")}
+                className="btn-primary"
                 style={{ padding: "16px", borderRadius: "14px", fontSize: "15px", fontWeight: "700", justifyContent: "center" }}
               >
                 Upgrade to Pro <Sparkles size={16} style={{ marginLeft: "8px" }} />
               </button>
-              <button 
-                onClick={() => setShowUpgradeModal(false)} 
-                style={{ 
-                  background: "none", border: "none", color: "var(--text-muted)", 
-                  fontSize: "14px", fontWeight: "600", cursor: "pointer", padding: "8px" 
+              <button
+                onClick={() => setShowUpgradeModal(false)}
+                style={{
+                  background: "none", border: "none", color: "var(--text-muted)",
+                  fontSize: "14px", fontWeight: "600", cursor: "pointer", padding: "8px"
                 }}
               >
                 Maybe Later

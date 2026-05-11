@@ -21,24 +21,36 @@ router.post("/create-checkout-session", requireAuth, async (req, res) => {
     return res.status(500).json({ error: "Stripe is not configured on the server." });
   }
   try {
-    const { priceId } = req.body; // In production, you'd define this in Stripe dashboard
+    // In production, define STRIPE_PRO_PRICE_ID in your .env
+    const targetPriceId = process.env.STRIPE_PRO_PRICE_ID;
+
+    // We build the line_items based on whether a proper Price ID exists.
+    // If not, we fall back to the inline price_data for development purposes.
+    const lineItems = targetPriceId 
+      ? [
+          {
+            price: targetPriceId,
+            quantity: 1,
+          }
+        ]
+      : [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: {
+                name: "Antigravity AI Pro Plan",
+                description: "Unlimited AI messages, documents, and smart actions.",
+              },
+              unit_amount: 1900, // $19.00
+              recurring: { interval: "month" },
+            },
+            quantity: 1,
+          },
+        ];
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
-      line_items: [
-        {
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: "Antigravity AI Pro Plan",
-              description: "Unlimited AI messages, documents, and smart actions.",
-            },
-            unit_amount: 1900, // $19.00
-            recurring: { interval: "month" },
-          },
-          quantity: 1,
-        },
-      ],
+      line_items: lineItems,
       mode: "subscription",
       success_url: `${process.env.FRONTEND_URL}/dashboard/billing?success=true&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.FRONTEND_URL}/dashboard/billing?cancelled=true`,

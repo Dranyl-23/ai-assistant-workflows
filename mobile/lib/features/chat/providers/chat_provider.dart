@@ -32,7 +32,7 @@ String get backendUrl {
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
-final chatProvider = Provider<ChatController>((ref) {
+final chatProvider = ChangeNotifierProvider<ChatController>((ref) {
   final controller = ChatController();
   ref.onDispose(() => controller.dispose());
   return controller;
@@ -109,6 +109,15 @@ class ChatController extends ChangeNotifier {
       await _chatBox.put('messages', []);
       await _chatBox.delete('conversationId');
       await _chatBox.put('last_user_id', currentUser.id);
+
+      // Clear usage cache so old limits don't bleed into new accounts
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kMessageCount);
+      await prefs.remove(_kMessageLimit);
+      await prefs.remove(_kUserPlan);
+
+      conversations.clear();
+      notifyListeners();
     }
 
     _loadHistory();

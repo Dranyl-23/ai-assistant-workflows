@@ -52,8 +52,6 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   }
 
   Future<void> _uploadDocument() async {
-    // Bug 5 fix: documents can be uploaded directly from this screen —
-    // users no longer need to leave and go back to the chat input.
     HapticFeedback.lightImpact();
 
     try {
@@ -83,7 +81,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           await request.send().timeout(const Duration(seconds: 60));
 
       if (response.statusCode == 201) {
-        _showSnack('✅  "$fileName" uploaded successfully!', isError: false);
+        _showSnack(' "$fileName" uploaded successfully!', isError: false);
         await _fetchDocuments(); // Refresh the list
       } else {
         _showSnack('Upload failed (status ${response.statusCode})', isError: true);
