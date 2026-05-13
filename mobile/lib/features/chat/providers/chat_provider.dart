@@ -19,15 +19,20 @@ import 'package:url_launcher/url_launcher.dart';
 // ── App Config ────────────────────────────────────────────────────────────────
 // Backend URL is injected at build time via --dart-define=BACKEND_URL=...
 // Falls back to the Android emulator localhost alias in debug mode.
-const _backendUrl = String.fromEnvironment(
-  'BACKEND_URL',
-  defaultValue: kDebugMode ? 'http://10.0.2.2:5000' : '',
-);
+const _backendUrl = String.fromEnvironment('BACKEND_URL');
 
 String get backendUrl {
   if (_backendUrl.isNotEmpty) return _backendUrl;
-  // Final fallback (should not reach in production)
-  return 'http://10.0.2.2:5000';
+  
+  // When running on real devices (alpha testing), 10.0.2.2 will fail.
+  // We should only use the emulator IP in debug mode if NO backend URL was provided.
+  if (kDebugMode) {
+    return 'https://ai-assistant-workflows.onrender.com';
+  }
+  
+  // CRITICAL: In production/alpha, we MUST have a real URL.
+  // Returning an empty string or throwing helps identify the configuration issue.
+  return ''; 
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────────
