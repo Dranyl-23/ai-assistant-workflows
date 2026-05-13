@@ -24,15 +24,8 @@ const _backendUrl = String.fromEnvironment('BACKEND_URL');
 String get backendUrl {
   if (_backendUrl.isNotEmpty) return _backendUrl;
   
-  // When running on real devices (alpha testing), 10.0.2.2 will fail.
-  // We should only use the emulator IP in debug mode if NO backend URL was provided.
-  if (kDebugMode) {
-    return 'https://ai-assistant-workflows.onrender.com';
-  }
-  
-  // CRITICAL: In production/alpha, we MUST have a real URL.
-  // Returning an empty string or throwing helps identify the configuration issue.
-  return ''; 
+  // Using Render as the global fallback so it works for alpha testers on real devices
+  return 'https://ai-assistant-workflows.onrender.com';
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────────
