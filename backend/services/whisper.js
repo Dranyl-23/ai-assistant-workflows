@@ -1,34 +1,21 @@
-const fs = require("fs");
-const path = require("path");
-const Groq = require("groq-sdk");
-
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+const speechmaticsService = require("./speechmatics");
 
 /**
- * Transcribe audio file using Groq Whisper API
+ * Transcribe audio file using Speechmatics API
  * @param {string} filePath - Path to the audio file
  * @param {string} language - Language code (e.g., 'en')
- * @returns {Object} { text, duration }
+ * @returns {Object} { text }
  */
 async function transcribeAudio(filePath, language = "en") {
   try {
-    const transcription = await groq.audio.transcriptions.create({
-      file: fs.createReadStream(filePath),
-      model: "whisper-large-v3-turbo",
-      response_format: "verbose_json",
-      language: language,
-    });
-
+    const result = await speechmaticsService.transcribeAudio(filePath, language);
     return {
-      text: transcription.text,
-      duration: transcription.duration,
-      language: transcription.language,
+      text: result.text,
+      // Speechmatics job results can include duration, but for now we return the text
     };
   } catch (error) {
-    console.error("Groq Whisper error:", error);
-    throw new Error(`Whisper API error: ${error.message}`);
+    console.error("Speechmatics STT error:", error);
+    throw new Error(`Speechmatics API error: ${error.message}`);
   }
 }
 

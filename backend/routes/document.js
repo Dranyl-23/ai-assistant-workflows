@@ -5,7 +5,7 @@ const fs = require("fs");
 const { requireAuth } = require("../middleware/auth");
 const { supabaseAdmin } = require("../config/supabase");
 const whisperService = require("../services/whisper");
-const elevenlabsService = require("../services/elevenlabs");
+const speechmaticsService = require("../services/speechmatics");
 const documentProcessing = require("../services/documentProcessing");
 const { generateEmbedding, chunkText } = require("../services/embeddings");
 const { v4: uuidv4 } = require("uuid");
@@ -146,26 +146,26 @@ router.post("/transcribe", upload.single("audio"), async (req, res) => {
   }
 });
 
-// POST /documents/tts - ElevenLabs TTS
+// POST /documents/tts - Speechmatics TTS
 router.post("/tts", async (req, res) => {
   try {
     const { text, voice_id } = req.body;
     if (!text) return res.status(400).json({ error: "Text is required" });
-    const audioBuffer = await elevenlabsService.textToSpeech(text, voice_id);
-    res.set({ "Content-Type": "audio/mpeg", "Content-Length": audioBuffer.length });
+    const audioBuffer = await speechmaticsService.textToSpeech(text, voice_id);
+    res.set({ "Content-Type": "audio/wav", "Content-Length": audioBuffer.length });
     res.send(audioBuffer);
   } catch (err) {
-    res.status(500).json({ error: "Failed to generate speech" });
+    res.status(500).json({ error: "Failed to generate speech with Speechmatics" });
   }
 });
 
-// GET /documents/voices - ElevenLabs voices
+// GET /documents/voices - Speechmatics voices
 router.get("/voices", async (req, res) => {
   try {
-    const voices = await elevenlabsService.getVoices();
+    const voices = await speechmaticsService.getVoices();
     res.json({ voices });
   } catch (err) {
-    res.status(500).json({ error: "Failed to fetch voices" });
+    res.status(500).json({ error: "Failed to fetch Speechmatics voices" });
   }
 });
 

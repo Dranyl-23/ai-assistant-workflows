@@ -74,8 +74,8 @@ app.get("/api/health", (_req, res) => {
     services: {
       supabase: !!process.env.SUPABASE_URL,
       groq_llm: !!process.env.GROQ_API_KEY,
-      groq_stt: !!process.env.GROQ_API_KEY,
-      elevenlabs_tts: !!process.env.ELEVENLABS_API_KEY,
+      speechmatics_stt: !!process.env.SPEECHMATICS_API_KEY,
+      speechmatics_tts: !!process.env.SPEECHMATICS_API_KEY,
       search: true,
       stripe: !!process.env.STRIPE_SECRET_KEY,
       n8n: !!process.env.N8N_BASE_URL,

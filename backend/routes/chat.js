@@ -6,7 +6,7 @@ const multer = require("multer");
 const fs = require("fs");
 const path = require("path");
 const { transcribeAudio } = require("../services/whisper");
-const { textToSpeech } = require("../services/elevenlabs");
+const speechmaticsService = require("../services/speechmatics");
 
 const upload = multer({ dest: path.join(__dirname, "../uploads/") });
 const router = express.Router();
@@ -268,15 +268,24 @@ router.post("/transcribe", upload.single("audio"), async (req, res) => {
 
 /**
  * POST /chat/tts
- * Text-to-Speech — NOTE: ElevenLabs integration is currently disabled.
- * The frontend uses the native Web Speech API (window.speechSynthesis) instead.
- * To re-enable, update the ELEVENLABS_API_KEY with 'text_to_speech' permissions.
+ * Text-to-Speech using Speechmatics
  */
 router.post("/tts", async (req, res) => {
-  return res.status(503).json({
-    error: "ElevenLabs TTS is currently disabled. The application uses native browser speech synthesis.",
-    fallback: "Use window.speechSynthesis in the frontend for text-to-speech."
-  });
+  try {
+    const { text, voice_id } = req.body;
+    if (!text) return res.status(400).json({ error: "Text is required" });
+    
+    const audioBuffer = await speechmaticsService.textToSpeech(text, voice_id);
+    
+    res.set({
+      "Content-Type": "audio/wav",
+      "Content-Length": audioBuffer.length
+    });
+    res.send(audioBuffer);
+  } catch (err) {
+    console.error("Speechmatics TTS error:", err);
+    res.status(500).json({ error: "Failed to generate speech." });
+  }
 });
 
 module.exports = router;
